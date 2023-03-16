@@ -1,11 +1,27 @@
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
+from array2gif import write_gif
+from moviepy.editor import ImageSequenceClip
 from tqdm import tqdm
-import argparse
 from pathlib import Path
-from utils import experiment_manager, networks, datasets, metrics
+import cv2
+from utils import experiment_manager, networks, datasets, metrics, parsers
 FONTSIZE = 16
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def get_aoi_ids(run_type: str):
+    if run_type == 'train':
+        aoi_ids = list(cfg.DATASET.TRAIN_IDS)
+    elif run_type == 'val':
+        aoi_ids = list(cfg.DATASET.VAL_IDS)
+    elif run_type == 'test':
+        aoi_ids = list(cfg.DATASET.TEST_IDS)
+    else:
+        raise Exception('unkown run type!')
+    return aoi_ids
 
 
 def qualitative_assessment(cfg: experiment_manager.CfgNode, run_type: str = 'test'):
@@ -152,28 +168,112 @@ def quantitative_assessment(cfg: experiment_manager.CfgNode, run_type: str = 'va
     print(f'F1 score: {f1_score_sem:.3f} - Precision: {precision_sem:.3f} - Recall {recall_sem:.3f}')
 
 
-def assessment_argument_parser():
-    # https://docs.python.org/3/library/argparse.html#the-add-argument-method
-    parser = argparse.ArgumentParser(description="Experiment Args")
+def remap(arr: np.ndarray, nbits: int = 4) -> np.ndarray:
+    new_arr = np.empty(arr.shape, dtype=np.uint8)
+    bins = np.linspace(0, 255, nbits + 1)
+    for bit in range(nbits):
+        lower_bound, upper_bound = bins[bit], bins[bit + 1]
+        value = int(lower_bound + (upper_bound - lower_bound) / 2)
+        new_arr = np.where(np.logical_and(lower_bound < arr,  arr <= upper_bound), new_arr, value)
 
-    parser.add_argument('-c', "--config-file", dest='config_file', required=True, help="path to config file")
-    parser.add_argument('-o', "--output-dir", dest='output_dir', required=True, help="path to output directory")
-    parser.add_argument('-d', "--dataset-dir", dest='dataset_dir', default="", required=True,
-                        help="path to output directory")
-    parser.add_argument('-r', "--run-type", dest='run_type', default="validation", required=False, help="run type")
+    return new_arr
 
-    parser.add_argument(
-        "opts",
-        help="Modify config options using the command-line",
-        default=None,
-        nargs=argparse.REMAINDER,
-    )
-    return parser
+
+def qualitative_temporal_consistency_assessment_video(cfg: experiment_manager.CfgNode, run_type: str = 'test'):
+    print(cfg.NAME)
+    net, *_ = networks.load_checkpoint(cfg, device)
+    net.eval()
+
+    aoi_ids = get_aoi_ids(run_type)
+    for aoi_id in aoi_ids:
+        print(aoi_id)
+        ds = datasets.EvalSingleAOIDataset(cfg, aoi_id)
+
+        # Set up the frames per second and frame size for the video
+        fps = 1
+        frame_size = (1024, 1024)
+
+        video_file = Path(cfg.PATHS.OUTPUT) / 'assessment' / 'gifs' / f'gif_{aoi_id}_{cfg.NAME}.avi'
+
+        # Create a VideoWriter object
+        # https://rsdharra.com/blog/lesson/5.html
+        fourcc = cv2.VideoWriter_fourcc('I', '4', '2', '0')
+        video_writer = cv2.VideoWriter(str(video_file), fourcc, fps, frame_size, True)
+
+        for i, item in enumerate(ds):
+            with torch.no_grad():
+                x = item['x'].to(device).unsqueeze(0)
+                logits = net(x)
+            y_hat = torch.sigmoid(logits)
+
+            x = x.detach().cpu().squeeze().numpy()
+            x = np.clip(x * 255, 0, 255)
+            x = x.transpose(1, 2, 0).astype('uint8')
+            m, n, _ = x.shape
+
+            img = np.zeros((*frame_size, 3), dtype=np.uint8)
+            img[:m, :n] = x
+
+            video_writer.write(cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+
+            if i == 5:
+                break
+
+
+        # Release the VideoWriter object and close the video file
+        video_writer.release()
+        cv2.destroyAllWindows()
+        # https://pypi.org/project/array2gif/
+        # out_file = Path(cfg.PATHS.OUTPUT) / 'assessment' / 'gifs' / f'gif_{aoi_id}_{cfg.NAME}.gif'
+        # write_gif(images[0], out_file)
+        break
+
+
+def qualitative_temporal_consistency_assessment_gif(cfg: experiment_manager.CfgNode, run_type: str = 'test'):
+    print(cfg.NAME)
+    net, *_ = networks.load_checkpoint(cfg, device)
+    net.eval()
+
+    aoi_ids = get_aoi_ids(run_type)
+    for aoi_id in aoi_ids:
+        print(aoi_id)
+        ds = datasets.EvalSingleAOIDataset(cfg, aoi_id)
+
+        # Set up the frames per second and frame size for the video
+        fps = 1
+        frame_size = (1024, 2048)
+        n_frames = len(ds)
+
+        gif_file = Path(cfg.PATHS.OUTPUT) / 'assessment' / 'gifs' / f'gif_{aoi_id}_{cfg.NAME}.gif'
+        frames = np.random.randint(256, size=[20, 64, 64, 3], dtype=np.uint8)  # YOUR DATA HERE
+        frames = np.zeros((n_frames, *frame_size, 3), dtype=np.uint8)
+
+        for t, item in enumerate(ds):
+            with torch.no_grad():
+                x = item['x'].to(device).unsqueeze(0)
+                logits = net(x)
+            y_hat = torch.sigmoid(logits) > 0.5
+            y_hat = y_hat.detach().cpu().squeeze().numpy()
+            y_hat = np.clip(y_hat * 255, 0, 255)
+
+            x = x.detach().cpu().squeeze().numpy()
+            x = np.clip(x * 255, 0, 255)
+            x = x.transpose(1, 2, 0).astype('uint8')
+            m, n, _ = x.shape
+
+            # img = np.zeros((*frame_size, 3), dtype=np.uint8)
+            frames[t, :m, :n] = x
+
+            m, n = y_hat.shape
+            frames[t, :m, frame_size[1] // 2:frame_size[1] // 2 + n, :] = np.repeat(y_hat[:, :, np.newaxis], 3, axis=2)
+
+        clip = ImageSequenceClip(list(frames), fps=fps)
+        clip.write_gif(str(gif_file), fps=fps)
 
 
 if __name__ == '__main__':
-    args = assessment_argument_parser().parse_known_args()[0]
+    args = parsers.deployement_argument_parser().parse_known_args()[0]
     cfg = experiment_manager.setup_cfg(args)
-    quantitative_assessment(cfg, run_type=args.run_type)
+    qualitative_temporal_consistency_assessment_gif(cfg)
     # qualitative_assessment_change(cfg, run_type=args.run_type)
     # qualitative_assessment_sem(cfg, run_type=args.run_type)

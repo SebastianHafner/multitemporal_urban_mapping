@@ -235,6 +235,13 @@ class EvalSingleAOIDataset(AbstractSpaceNet7Dataset):
 
         return item
 
+    def get_dims(self) -> tuple:
+        sample = self.samples[0]
+        dataset, year, month = sample['dataset'], sample['year'], sample['month']
+        buildings = self._load_building_label(self.aoi_id, year, month)
+        m, n, _ = buildings.shape
+        return (m, n)
+
     def get_index(self, aoi_id: str) -> int:
         for index, candidate_aoi_id in enumerate(self.aoi_ids):
             if aoi_id == candidate_aoi_id:
