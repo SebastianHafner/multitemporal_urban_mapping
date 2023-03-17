@@ -3,7 +3,8 @@ from pathlib import Path
 from abc import abstractmethod
 import numpy as np
 import multiprocessing
-from utils import augmentations, experiment_manager, geofiles, spacenet7_helpers
+from utils import augmentations, experiment_manager, geofiles
+import cv2
 
 
 class AbstractSpaceNet7Dataset(torch.utils.data.Dataset):
@@ -14,6 +15,7 @@ class AbstractSpaceNet7Dataset(torch.utils.data.Dataset):
         self.root_path = Path(cfg.PATHS.DATASET)
 
         self.include_alpha = cfg.DATALOADER.INCLUDE_ALPHA
+        self.pad = cfg.DATALOADER.PAD_BORDERS
 
     @abstractmethod
     def __getitem__(self, index: int) -> dict:
@@ -31,12 +33,20 @@ class AbstractSpaceNet7Dataset(torch.utils.data.Dataset):
         # 4th band (last oen) is alpha band
         if not self.include_alpha:
             img = img[:, :, :-1]
+        m, n, _ = img.shape
+        if self.pad and (m != 1024 or n != 1024):
+            # https://www.geeksforgeeks.org/python-opencv-cv2-copymakeborder-method/
+            img = cv2.copyMakeBorder(img, 0, 1024-m, 0, 1024-n, borderType=cv2.BORDER_REPLICATE)
         return img.astype(np.float32)
 
     def _load_building_label(self, aoi_id: str, year: int, month: int) -> np.ndarray:
         folder = self.root_path / 'train' / aoi_id / 'labels_raster'
         file = folder / f'global_monthly_{year}_{month:02d}_mosaic_{aoi_id}_Buildings.tif'
         label, _, _ = geofiles.read_tif(file)
+        m, n, _ = label.shape
+        if self.pad and (m != 1024 or n != 1024):
+            label = cv2.copyMakeBorder(label, 0, 1024-m, 0, 1024-n, borderType=cv2.BORDER_REPLICATE)
+            label = label[:, :, None]  # cv2 squeezes array
         label = label > 0
         return label.astype(np.float32)
 

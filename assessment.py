@@ -308,7 +308,7 @@ def quantitative_temporal_consistency_assessment(cfg: experiment_manager.CfgNode
 if __name__ == '__main__':
     args = parsers.deployement_argument_parser().parse_known_args()[0]
     cfg = experiment_manager.setup_cfg(args)
-    quantitative_temporal_consistency_assessment(cfg)
-    # qualitative_temporal_consistency_assessment_gif(cfg)
+    # quantitative_temporal_consistency_assessment(cfg)
+    qualitative_temporal_consistency_assessment_gif(cfg)
     # qualitative_assessment_change(cfg, run_type=args.run_type)
     # qualitative_assessment_sem(cfg, run_type=args.run_type)
