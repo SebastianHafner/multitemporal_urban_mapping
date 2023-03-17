@@ -1,0 +1,10 @@
+_BASE_: "base.yaml"
+
+TRAINER:
+  BATCH_SIZE: 1
+
+MODEL:
+  TYPE: 'esp_net'
+
+DATALOADER:
+  TIMESERIES_LENGTH: 3

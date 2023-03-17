@@ -13,7 +13,7 @@ from utils import experiment_manager
 def create_network(cfg):
     if cfg.MODEL.TYPE == 'unet':
         net = UNet(cfg)
-    elif cfg.MODEL.TYPE == 'esp_net':
+    elif cfg.MODEL.TYPE == 'espnet':
         net = ESPNet(cfg)
     else:
         raise Exception(f'Unknown network ({cfg.MODEL.TYPE}).')

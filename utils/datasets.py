@@ -126,11 +126,68 @@ class TrainSingleDateDataset(AbstractSpaceNet7Dataset):
 
         return item
 
-    def get_index(self, aoi_id: str) -> int:
-        for index, candidate_aoi_id in enumerate(self.aoi_ids):
-            if aoi_id == candidate_aoi_id:
-                return index
-        return None
+    def __len__(self):
+        return self.length
+
+    def __str__(self):
+        return f'Dataset with {self.length} samples.'
+
+
+class TrainTimeseriesDataset(AbstractSpaceNet7Dataset):
+
+    def __init__(self, cfg: experiment_manager.CfgNode, run_type: str, no_augmentations: bool = False,
+                 disable_multiplier: bool = False):
+        super().__init__(cfg)
+
+        self.T = cfg.DATALOADER.TIMESERIES_LENGTH
+
+        # handling transformations of data
+        self.no_augmentations = no_augmentations
+        self.transform = augmentations.compose_transformations(cfg, no_augmentations)
+
+        self.metadata = geofiles.load_json(self.root_path / f'metadata_siamesessl.json')
+
+        if run_type == 'train':
+            self.aoi_ids = list(cfg.DATASET.TRAIN_IDS)
+        elif run_type == 'val':
+            self.aoi_ids = list(cfg.DATASET.VAL_IDS)
+        elif run_type == 'test':
+            self.aoi_ids = list(cfg.DATASET.TEST_IDS)
+        else:
+            raise Exception('unkown run type!')
+
+        if not disable_multiplier:
+            self.aoi_ids = self.aoi_ids * cfg.DATALOADER.TRAINING_MULTIPLIER
+
+        manager = multiprocessing.Manager()
+        self.aoi_ids = manager.list(self.aoi_ids)
+        self.metadata = manager.dict(self.metadata)
+
+        self.length = len(self.aoi_ids)
+
+    def __getitem__(self, index):
+
+        aoi_id = self.aoi_ids[index]
+
+        timestamps = [ts for ts in self.metadata[aoi_id] if not ts['mask']]
+
+        t_values = sorted(np.random.randint(0, len(timestamps), size=self.T))
+        timestamp = timestamps[t]
+        dataset, year, month = timestamp['dataset'], timestamp['year'], timestamp['month']
+
+        img = self._load_planetscope_mosaic(aoi_id, dataset, year, month)
+        buildings = self._load_building_label(aoi_id, year, month)
+
+        img, buildings = self.transform((img, buildings))
+
+        item = {
+            'x': img,
+            'y': buildings,
+            'aoi_id': aoi_id,
+            'year': year,
+        }
+
+        return item
 
     def __len__(self):
         return self.length
