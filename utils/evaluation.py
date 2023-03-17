@@ -1,7 +1,41 @@
 import torch
 from torch.utils import data as torch_data
 import wandb
-from utils import datasets, metrics
+from utils import datasets
+
+
+class TCMeasurer(object):
+    def __init__(self, aoi_id: str, threshold: float = 0.5):
+
+        self.aoi_id = aoi_id
+        self.threshold = threshold
+        self.y_hats, self.ys = [], []
+
+        self.eps = 10e-05
+
+    def add_sample(self, y: torch.Tensor, y_hat: torch.Tensor):
+        y = y.bool()
+        y_hat = y_hat > self.threshold
+
+        self.y_hats.append(y_hat.squeeze())
+        self.ys.append(y.squeeze())
+
+    def iou(self, y: torch.Tensor, y_hat: torch.Tensor) -> torch.tensor:
+        tp = torch.sum(y & y_hat).float()
+        fp = torch.sum(y_hat & ~y).float()
+        fn = torch.sum(~y_hat & y).float()
+        return tp / (tp + fp + fn + self.eps)
+
+    def tc(self) -> torch.tensor:
+        # https://ieeexplore.ieee.org/document/9150870
+        T = len(self.y_hats)
+        sum_tc = 0
+        for t in range(1, T):
+            sum_tc += self.iou(self.ys[t], self.y_hats[t])
+        return (1 / (T - 1)) * sum_tc
+
+    def is_empty(self):
+        return True if len(self.y_hats) == 0 else False
 
 
 class Measurer(object):

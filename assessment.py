@@ -6,7 +6,7 @@ from moviepy.editor import ImageSequenceClip
 from tqdm import tqdm
 from pathlib import Path
 import cv2
-from utils import experiment_manager, networks, datasets, metrics, parsers
+from utils import experiment_manager, networks, datasets, parsers, evaluation
 FONTSIZE = 16
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -240,8 +240,9 @@ def qualitative_temporal_consistency_assessment_gif(cfg: experiment_manager.CfgN
         ds = datasets.EvalSingleAOIDataset(cfg, aoi_id)
 
         # Set up the frames per second and frame size for the video
+        img_unit = 1024
         fps = 1
-        frame_size = (1024, 2048)
+        frame_size = (img_unit, 3 * img_unit)
         n_frames = len(ds)
 
         gif_file = Path(cfg.PATHS.OUTPUT) / 'assessment' / 'gifs' / f'gif_{aoi_id}_{cfg.NAME}.gif'
@@ -260,20 +261,54 @@ def qualitative_temporal_consistency_assessment_gif(cfg: experiment_manager.CfgN
             x = np.clip(x * 255, 0, 255)
             x = x.transpose(1, 2, 0).astype('uint8')
             m, n, _ = x.shape
-
-            # img = np.zeros((*frame_size, 3), dtype=np.uint8)
             frames[t, :m, :n] = x
 
             m, n = y_hat.shape
-            frames[t, :m, frame_size[1] // 2:frame_size[1] // 2 + n, :] = np.repeat(y_hat[:, :, np.newaxis], 3, axis=2)
+            y_hat_rgb = np.repeat(y_hat[:, :, np.newaxis], 3, axis=2)
+            frames[t, :m, 2 * img_unit:2 * img_unit + n, :] = y_hat_rgb
+
+            y = item['y'].cpu().squeeze().numpy()
+            y = np.clip(y * 255, 0, 255)
+            m, n = y.shape
+            y_rgb = np.repeat(y[:, :, np.newaxis], 3, axis=2)
+            frames[t, :m, img_unit:img_unit + n, :] = y_rgb
 
         clip = ImageSequenceClip(list(frames), fps=fps)
         clip.write_gif(str(gif_file), fps=fps)
 
 
+def quantitative_temporal_consistency_assessment(cfg: experiment_manager.CfgNode, run_type: str = 'test'):
+    print(cfg.NAME)
+    net, *_ = networks.load_checkpoint(cfg, device)
+    net.eval()
+
+    values = []
+
+    aoi_ids = get_aoi_ids(run_type)
+    for aoi_id in aoi_ids:
+        print(aoi_id)
+        ds = datasets.EvalSingleAOIDataset(cfg, aoi_id)
+        measurer = evaluation.TCMeasurer(aoi_id)
+
+        for t, item in enumerate(ds):
+            with torch.no_grad():
+                x = item['x'].to(device).unsqueeze(0)
+                logits = net(x)
+            y_hat = torch.sigmoid(logits).detach().squeeze()
+            y = item['y'].to(device).squeeze()
+            measurer.add_sample(y, y_hat)
+
+        values.append(measurer.tc().item())
+
+    fig, ax = plt.subplots(1, 1)
+    ax.boxplot(values)
+
+    print(values)
+
 if __name__ == '__main__':
     args = parsers.deployement_argument_parser().parse_known_args()[0]
     cfg = experiment_manager.setup_cfg(args)
-    qualitative_temporal_consistency_assessment_gif(cfg)
+    quantitative_temporal_consistency_assessment(cfg)
+    # qualitative_temporal_consistency_assessment_gif(cfg)
     # qualitative_assessment_change(cfg, run_type=args.run_type)
     # qualitative_assessment_sem(cfg, run_type=args.run_type)
