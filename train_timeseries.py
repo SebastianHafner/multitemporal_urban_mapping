@@ -46,7 +46,6 @@ def run_training(cfg):
     stop_training = False
 
     lstm_states_prev = None
-
     for epoch in range(1, epochs + 1):
         print(f'Starting epoch {epoch}/{epochs}.')
 
@@ -105,8 +104,8 @@ def run_training(cfg):
         assert (epoch == epoch_float)
         print(f'epoch float {epoch_float} (step {global_step}) - epoch {epoch}')
         # evaluation at the end of an epoch
-        _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
-        f1_val = evaluation.model_evaluation(net, cfg, device, 'val', epoch_float, global_step)
+        _ = evaluation.model_evaluation_timeseries(net, cfg, device, 'train', epoch_float, global_step)
+        f1_val = evaluation.model_evaluation_timeseries(net, cfg, device, 'val', epoch_float, global_step)
 
         if f1_val > best_f1_val:
             best_f1_val = f1_val
@@ -122,7 +121,7 @@ def run_training(cfg):
             break
 
     net, *_ = networks.load_checkpoint(cfg, device)
-    _ = evaluation.model_evaluation(net, cfg, device, 'test', epoch_float, global_step)
+    _ = evaluation.model_evaluation_timeseries(net, cfg, device, 'test', epoch_float, global_step)
 
 
 if __name__ == '__main__':
