@@ -90,14 +90,16 @@ class Measurer(object):
         return True if (self.TP + self.TN + self.FP + self.FN) == 0 else False
 
 
-def inference_loop(net, dataset: datasets.EvalSingleDateDataset, device: str) -> dict:
+def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
+
+    ds = datasets.EvalSingleDateDataset(cfg, run_type)
 
     net.to(device)
     net.eval()
 
     measurer = Measurer()
 
-    dataloader = torch_data.DataLoader(dataset, batch_size=1, num_workers=0, shuffle=False, drop_last=False)
+    dataloader = torch_data.DataLoader(ds, batch_size=1, num_workers=0, shuffle=False, drop_last=False)
 
     for step, item in enumerate(dataloader):
         x = item['x'].to(device)
@@ -110,14 +112,6 @@ def inference_loop(net, dataset: datasets.EvalSingleDateDataset, device: str) ->
         measurer.add_sample(y, y_hat.detach())
 
     f1 = measurer.f1()
-    return f1
-
-
-def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
-
-    ds = datasets.EvalSingleDateDataset(cfg, run_type)
-
-    f1 = inference_loop(net, ds, device)
 
     wandb.log({
         f'{run_type} f1': f1,
@@ -126,3 +120,48 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
 
     return f1
 
+
+def model_evaluation_timeseries(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
+    ds = datasets.EvalTimeseriesDataset(cfg, run_type)
+
+    net.to(device)
+    net.eval()
+
+    measurer = Measurer()
+
+    dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE, num_workers=0, shuffle=False,
+                                       drop_last=False)
+
+    for step, item in enumerate(dataloader):
+        # => TimeStep, BatchSize, ...
+        x = item['x'].to(device).transpose(0, 1)
+        T = x.shape[0]
+
+        lstm_states = None
+        logits = []
+        with torch.no_grad():
+            if net.module.is_lstm_net():
+                for t in range(T):
+                    if t != 0:
+                        lstm_states = lstm_states_prev
+                    logits_t, lstm_states_prev = net(x[t].unsqueeze(0), lstm_states)
+                    logits.append(logits_t)
+            else:
+                assert (T == 1)
+                logits_t = net(x)
+                logits.append(logits_t)
+
+        y = item['y'].to(device).transpose(0, 1)
+        logits = torch.concat(logits, dim=0)
+        y_hat = torch.sigmoid(logits)
+
+        measurer.add_sample(y, y_hat.detach())
+
+    f1 = measurer.f1()
+
+    wandb.log({
+        f'{run_type} f1': f1,
+        'step': step, 'epoch': epoch,
+    })
+
+    return f1

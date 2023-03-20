@@ -2,12 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from torch.nn.modules.padding import ReplicationPad2d
 from collections import OrderedDict
-
 from pathlib import Path
-
 from utils import experiment_manager
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def create_network(cfg):
@@ -15,6 +14,8 @@ def create_network(cfg):
         net = UNet(cfg)
     elif cfg.MODEL.TYPE == 'espnet':
         net = ESPNet(cfg)
+    elif cfg.MODEL.TYPE == 'espnetl1b':
+        net = ESPNet_L1b(cfg)
     else:
         raise Exception(f'Unknown network ({cfg.MODEL.TYPE}).')
     return nn.DataParallel(net)
@@ -224,7 +225,8 @@ class ESPNet(nn.Module):
     This class defines the ESPNet network
     '''
 
-    def __init__(self, cfg: experiment_manager.CfgNode, classes: int = 16, p: int = 2, q: int = 3, encoderFile=None):
+    def __init__(self, cfg: experiment_manager.CfgNode, encoder_type: str = 'ESPNet_C', classes: int = 19, p: int = 2,
+                 q: int = 3, encoder_file=None):
         '''
         :param classes: number of classes in the dataset. Default is 19 for the cityscapes_video
         # does not work for fewer than 5 classes -> out conv converts to 6
@@ -234,28 +236,15 @@ class ESPNet(nn.Module):
                             RUM-based light weight decoder. See paper for more details.
         '''
         super().__init__()
-
-        lstm_filter_size = None
-        device  = 'cpu'  # from f2f
-        dtype = torch.float32  # from f2f
-        state_init = 'learn'  # from f2f
-        cell_type = 5  # from f2f
-        batch_size = 1  # from f2f
-        time_steps = 1  # from f2f
-        overlap = 0  # from f2f
-        val_img_size = [cfg.AUGMENTATION.CROP_SIZE, cfg.AUGMENTATION.CROP_SIZE]  # f2f [512, 1024]
-        lstm_activation_function = 'prelu'  # from f2f
-        encoder_type = 'ESPNet_C'
-
+        self.cfg = cfg
         if encoder_type == 'ESPNet_C_L1b':
-            self.encoder = ESPNet_C_L1b(lstm_filter_size, device, dtype, state_init, cell_type, batch_size,
-                                        time_steps, overlap, val_img_size, lstm_activation_function, classes, p, q)
+            self.encoder = ESPNet_C_L1b(cfg, p, q)
         elif encoder_type == 'ESPNet_C':
             self.encoder = ESPNet_Encoder(classes, p, q)
         else:
             assert False
-        if encoderFile != None:
-            self.encoder.load_state_dict(torch.load(encoderFile))
+        if encoder_file != None:
+            self.encoder.load_state_dict(torch.load(encoder_file))
             print('Encoder loaded!')
         # load the encoder modules
         self.modules = []
@@ -336,10 +325,7 @@ class ESPNet(nn.Module):
         output1_C = self.level3_C(output1_cat)
 
         # RUM, Concat_3 + ESP_2 + DeConv_green_1
-        comb_l2_l3 = torch.cat([output1_C, output2_c], 1)
-        comb_l2_l3 = self.combine_l2_l3(comb_l2_l3)
-        comb_l2_l3 = self.up_l2(comb_l2_l3)
-        # comb_l2_l3 = self.up_l2(self.combine_l2_l3(torch.cat([output1_C, output2_c], 1)))
+        comb_l2_l3 = self.up_l2(self.combine_l2_l3(torch.cat([output1_C, output2_c], 1)))
 
         # Concat_4 + Conv-1
         concat_features = self.conv(torch.cat([comb_l2_l3, output0], 1))
@@ -353,13 +339,16 @@ class ESPNet(nn.Module):
         out = self.outc(classifier)
         return out
 
+    def is_lstm_net(self) -> bool:
+        return False
+
 
 class ESPNet_L1b(ESPNet):
 
-    def __init__(self, cfg: experiment_manager.CfgNode):
-        super().__init__(cfg)
+    def __init__(self, cfg: experiment_manager.CfgNode, encoder_file=None):
+        super().__init__(cfg, encoder_type='ESPNet_C_L1b', encoder_file=encoder_file)
 
-    def forward(self, input, states):
+    def forward(self, input: torch.tensor, states: torch.tensor) -> torch.tensor:
         # Dimensions: Time, BatchSize, Channels, Height, Width
         input = input.view(-1, input.shape[2], input.shape[3], input.shape[4])  # merge time and bs dim
 
@@ -389,14 +378,14 @@ class ESPNet_L1b(ESPNet):
 
         if self.encoder.is_batch_norm:
             batch_norm_features = self.modules[10](output2_cat)
-            lstm_in = batch_norm_features.view(-1, self.encoder.batch_size, batch_norm_features.shape[1],
+            lstm_in = batch_norm_features.view(-1, self.cfg.TRAINER.BATCH_SIZE, batch_norm_features.shape[1],
                                                batch_norm_features.shape[2],
                                                batch_norm_features.shape[3])  # -1 ... time_steps, 1..bs
             lstm_out, new_states = self.modules[11](lstm_in, states)
             lstm_out = lstm_out.view(-1, lstm_out.shape[2], lstm_out.shape[3], lstm_out.shape[4])
         else:
             batch_norm_features = output2_cat
-            lstm_in = batch_norm_features.view(-1, self.encoder.batch_size, batch_norm_features.shape[1],
+            lstm_in = batch_norm_features.view(-1, self.cfg.TRAINER.BATCH_SIZE, batch_norm_features.shape[1],
                                                batch_norm_features.shape[2],
                                                batch_norm_features.shape[3])  # -1 ... time_steps, 1..bs
             lstm_out, new_states = self.modules[10](lstm_in, states)
@@ -411,93 +400,23 @@ class ESPNet_L1b(ESPNet):
         concat_features = self.conv(torch.cat([comb_l2_l3, output0], 1))  # Concat_4 + Conv-1
 
         classifier = self.classifier(concat_features)  # DeConv_green_2
-        classifier = classifier.view(-1, self.encoder.batch_size, classifier.shape[1], classifier.shape[2],
+        classifier = classifier.view(-1, self.cfg.TRAINER.BATCH_SIZE, classifier.shape[1], classifier.shape[2],
                                      classifier.shape[3])  # -1 ... time_steps, 1..bs
-        return F.softmax(classifier, dim=2), new_states
+        out = self.outc(classifier.squeeze(0))
+        return out.unsqueeze(0), new_states
 
     def update_parameters(self, batch_size, time_steps, overlap):
         self.encoder.update_parameters(batch_size, time_steps, overlap)
 
-
-# ESPNet-C, Encoder part
-class ESPNet_Encoder(nn.Module):
-    '''
-    This class defines the ESPNet-C network in the paper
-    '''
-
-    def __init__(self, classes=19, p=2, q=3):
-        '''
-        :param classes: number of classes in the dataset. Default is 19 for the cityscapes_video
-        :param p: depth multiplier
-        :param q: depth multiplier
-        '''
-        super().__init__()
-        self.level1 = CBR(3, 16, 3, 2)
-        self.sample1 = InputProjectionA(1)
-        self.sample2 = InputProjectionA(2)
-
-        self.b1 = BR(16 + 3)
-        self.level2_0 = DownSamplerB(16 + 3, 64)
-
-        self.level2 = nn.ModuleList()
-        for i in range(0, p):
-            self.level2.append(DilatedParllelResidualBlockB(64, 64))
-        self.b2 = BR(128 + 3)
-
-        self.level3_0 = DownSamplerB(128 + 3, 128)
-        self.level3 = nn.ModuleList()
-        for i in range(0, q):
-            self.level3.append(DilatedParllelResidualBlockB(128, 128))
-        self.b3 = BR(256)
-
-        self.classifier = C(256, classes, 1, 1)
-
-    def forward(self, input):
-        '''
-        :param input: Receives the input RGB image
-        :return: the transformed feature map with spatial dimensions 1/8th of the input image
-        '''
-        input = input.squeeze(0)  # 5Ax -> 4Ax
-
-        output0 = self.level1(input)  # 512x1024 --> 256x512
-        inp1 = self.sample1(input)  # scale down RGB
-        inp2 = self.sample2(input)  # scale down RGB
-
-        output0_cat = self.b1(torch.cat([output0, inp1], 1))  # Concat_0
-        output1_0 = self.level2_0(output0_cat)  # down-sampled, ESP_red_0
-
-        for i, layer in enumerate(self.level2):  # p ESP-blocks, p..alpha_2
-            if i == 0:
-                output1 = layer(output1_0)
-            else:
-                output1 = layer(output1)
-
-        output1_cat = self.b2(torch.cat([output1, output1_0, inp2], 1))  # Concat_1
-
-        output2_0 = self.level3_0(output1_cat)  # down-sampled, ESP_red_1
-        for i, layer in enumerate(self.level3):  # q ESP-blocks, q..alpha_3
-            if i == 0:
-                output2 = layer(output2_0)
-            else:
-                output2 = layer(output2)
-
-        output2_cat = self.b3(torch.cat([output2_0, output2], 1))  # Concat_2
-
-        classifier = self.classifier(output2_cat)
-
-        classifier = F.softmax(classifier, dim=1)
-        classifier = classifier.unsqueeze(0)  # 4Ax -> 5Ax
-        return classifier
+    def is_lstm_net(self) -> bool:
+        return True
 
 
 class ESPNet_C_L1b(nn.Module):
-    def __init__(self, lstm_filter_size, device, dtype, state_init, cell_type, batch_size, time_steps, overlap,
-                 val_img_size, lstm_activation_function, classes=19, p=2, q=3, init='default'):
+    def __init__(self, cfg: experiment_manager.CfgNode, p: int = 2, q: int = 3):
         super().__init__()
-        self.val_img_size = val_img_size
         self.state_scale_factor = 8
-        self.batch_size = batch_size
-        self.state_channels = 19
+        self.state_channels = 16
 
         self.level1 = CBR(3, 16, 3, 2)
         self.sample1 = InputProjectionA(1)
@@ -518,9 +437,11 @@ class ESPNet_C_L1b(nn.Module):
         self.b3 = BR(256)
 
         # LSTM stuff
-        self.clstm = ConvLSTM(256, 19, lstm_filter_size, lstm_activation_function, device, dtype,
-                              state_init, cell_type, batch_size, time_steps, overlap,
-                              state_img_size=[val_img_size[0] // 8, val_img_size[1] // 8])
+        lstm_activation_function = 'prelu'
+        self.clstm = ConvLSTM(256, 19, kernel_size=5, activation_function=lstm_activation_function, state_init='learn',
+                              cell_type=5, batch_size=cfg.TRAINER.BATCH_SIZE,
+                              time_steps=cfg.DATALOADER.TIMESERIES_LENGTH,
+                              state_img_size=[cfg.AUGMENTATION.CROP_SIZE // 8, cfg.AUGMENTATION.CROP_SIZE // 8])
         self.is_batch_norm = False
         if lstm_activation_function == 'tanh':
             self.is_batch_norm = True
@@ -575,6 +496,78 @@ class ESPNet_C_L1b(nn.Module):
         self.time_steps = time_steps
         self.batch_size = batch_size
         self.clstm.update_parameters(batch_size, time_steps, overlap)
+
+
+# ESPNet-C, Encoder part
+class ESPNet_Encoder(nn.Module):
+    '''
+    This class defines the ESPNet-C network in the paper
+    '''
+
+    def __init__(self, classes=16, p=2, q=3):
+        '''
+        :param classes: number of classes in the dataset. Default is 19 for the cityscapes_video
+        :param p: depth multiplier
+        :param q: depth multiplier
+        '''
+        super().__init__()
+        self.level1 = CBR(3, 16, 3, 2)
+        self.sample1 = InputProjectionA(1)
+        self.sample2 = InputProjectionA(2)
+
+        self.b1 = BR(16 + 3)
+        self.level2_0 = DownSamplerB(16 + 3, 64)
+
+        self.level2 = nn.ModuleList()
+        for i in range(0, p):
+            self.level2.append(DilatedParllelResidualBlockB(64, 64))
+        self.b2 = BR(128 + 3)
+
+        self.level3_0 = DownSamplerB(128 + 3, 128)
+        self.level3 = nn.ModuleList()
+        for i in range(0, q):
+            self.level3.append(DilatedParllelResidualBlockB(128, 128))
+        self.b3 = BR(256)
+
+        self.classifier = C(256, classes, 1, 1)
+
+    def forward(self, input: torch.tensor) -> torch.tensor:
+        '''
+        :param input: Receives the input RGB image
+        :return: the transformed feature map with spatial dimensions 1/8th of the input image
+        '''
+        input = input.squeeze(0)  # 5Ax -> 4Ax
+
+        output0 = self.level1(input)  # 512x1024 --> 256x512
+        inp1 = self.sample1(input)  # scale down RGB
+        inp2 = self.sample2(input)  # scale down RGB
+
+        output0_cat = self.b1(torch.cat([output0, inp1], 1))  # Concat_0
+        output1_0 = self.level2_0(output0_cat)  # down-sampled, ESP_red_0
+
+        for i, layer in enumerate(self.level2):  # p ESP-blocks, p..alpha_2
+            if i == 0:
+                output1 = layer(output1_0)
+            else:
+                output1 = layer(output1)
+
+        output1_cat = self.b2(torch.cat([output1, output1_0, inp2], 1))  # Concat_1
+
+        output2_0 = self.level3_0(output1_cat)  # down-sampled, ESP_red_1
+        for i, layer in enumerate(self.level3):  # q ESP-blocks, q..alpha_3
+            if i == 0:
+                output2 = layer(output2_0)
+            else:
+                output2 = layer(output2)
+
+        output2_cat = self.b3(torch.cat([output2_0, output2], 1))  # Concat_2
+
+        classifier = self.classifier(output2_cat)
+
+        classifier = F.softmax(classifier, dim=1)
+        classifier = classifier.unsqueeze(0)  # 4Ax -> 5Ax
+        return classifier
+
 
 # Convolution with succeeding batch normalization and PReLU activation
 class CBR(nn.Module):
@@ -838,11 +831,12 @@ class InputProjectionA(nn.Module):
 class ConvLSTM(nn.Module):
     # input_channels corresponds to the first input feature map
     # hidden state is a list of succeeding lstm layers.
-    def __init__(self, input_channels, hidden_channels, kernel_size, activation_function, device,
-                 dtype, state_init, cell_type, batch_size, time_steps, overlap, dilation=1, init='default',
-                 is_stateful=True, state_img_size=None):
+    def __init__(self, input_channels, hidden_channels, kernel_size, activation_function, state_init, batch_size,
+                 time_steps, cell_type: int = 5, overlap: int = 0, dilation: int = 1, init: str = 'default',
+                 is_stateful=True, state_img_size=None, dtype=torch.float32):
         super(ConvLSTM, self).__init__()
 
+        self.dtype = dtype
         self.input_channels = input_channels
         self.hidden_channels = hidden_channels
         self.kernel_size = kernel_size
@@ -858,7 +852,7 @@ class ConvLSTM(nn.Module):
             self.cell = ConvLSTMCell5(self.input_channels, self.hidden_channels, self.kernel_size, self.dilation,
                                       activation_function)
         self.is_stateful = is_stateful
-        self.dtype = dtype
+        self.dtype = torch.float32
         self.device = device
         self.state_init = state_init
         self.state_img_size = state_img_size
@@ -891,13 +885,13 @@ class ConvLSTM(nn.Module):
         new_states = None
         time_steps = inputs.shape[0]
         outputs = torch.empty(time_steps, self.batch_size, self.hidden_channels, inputs.shape[3],
-                              inputs.shape[4], dtype=self.dtype, device=self.device)
+                              inputs.shape[4], dtype=self.dtype, device=device)
         if self.is_stateful == 0 or states is None:
             h = nn.functional.interpolate(self.h0.expand(self.batch_size, -1, -1, -1),
                                           size=(inputs.shape[3], inputs.shape[4]), mode='bilinear', align_corners=True)
             c = nn.functional.interpolate(self.c0.expand(self.batch_size, -1, -1, -1),
                                           size=(inputs.shape[3], inputs.shape[4]), mode='bilinear', align_corners=True)
-            print("Init LSTM")
+            # print("Init LSTM")
         else:
             c = states[0]
             h = states[1]

@@ -1,4 +1,4 @@
-import torchvision.transforms.functional as TF
+import torch
 from torchvision import transforms
 import numpy as np
 
@@ -34,39 +34,39 @@ def compose_transformations(cfg, no_augmentations: bool):
 
 class Numpy2Torch(object):
     def __call__(self, args):
-        img, label = args
-        img_tensor = TF.to_tensor(img)
-        label_tensor = TF.to_tensor(label)
-        return img_tensor, label_tensor
+        images, labels = args
+        images_tensor = torch.Tensor(images).permute(0, 3, 1, 2)
+        labels_tensor = torch.Tensor(labels).permute(0, 3, 1, 2)
+        return images_tensor, labels_tensor
 
 
 class RandomFlip(object):
     def __call__(self, args):
-        img, label = args
+        images, labels = args
         horizontal_flip = np.random.choice([True, False])
         vertical_flip = np.random.choice([True, False])
 
         if horizontal_flip:
-            img = np.flip(img, axis=1)
-            label = np.flip(label, axis=1)
+            images = np.flip(images, axis=2)
+            labels = np.flip(labels, axis=2)
 
         if vertical_flip:
-            img = np.flip(img, axis=0)
-            label = np.flip(label, axis=0)
+            images = np.flip(images, axis=1)
+            labels = np.flip(labels, axis=1)
 
-        img = img.copy()
-        label = label.copy()
+        images = images.copy()
+        labels = labels.copy()
 
-        return img, label
+        return images, labels
 
 
 class RandomRotate(object):
     def __call__(self, args):
-        img, label = args
+        images, labels = args
         k = np.random.randint(1, 4)  # number of 90 degree rotations
-        img = np.rot90(img, k, axes=(0, 1)).copy()
-        label = np.rot90(label, k, axes=(0, 1)).copy()
-        return img, label
+        images = np.rot90(images, k, axes=(1, 2)).copy()
+        labels = np.rot90(labels, k, axes=(1, 2)).copy()
+        return images, labels
 
 
 class ColorShift(object):
@@ -88,10 +88,10 @@ class GammaCorrection(object):
         self.max_gamma = max_gamma
 
     def __call__(self, args):
-        img, label = args
-        gamma = np.random.uniform(self.min_gamma, self.max_gamma, img.shape[-1])
-        img = np.clip(np.power(img, gamma[np.newaxis, np.newaxis, :]), 0, 1).astype(np.float32)
-        return img, label
+        images, labels = args
+        gamma = np.random.uniform(self.min_gamma, self.max_gamma, images.shape[-1])
+        images = np.clip(np.power(images, gamma[np.newaxis, np.newaxis, np.newaxis, :]), 0, 1).astype(np.float32)
+        return images, labels
 
 
 # Performs uniform cropping on images
@@ -100,20 +100,20 @@ class UniformCrop(object):
         self.crop_size = crop_size
 
     def random_crop(self, args):
-        img, label = args
-        height, width, _ = label.shape
+        images, labels = args
+        _, height, width, _ = labels.shape
         crop_limit_x = width - self.crop_size
         crop_limit_y = height - self.crop_size
         x = np.random.randint(0, crop_limit_x)
         y = np.random.randint(0, crop_limit_y)
 
-        img_crop = img[y:y+self.crop_size, x:x+self.crop_size, ]
-        label_crop = label[y:y+self.crop_size, x:x+self.crop_size, ]
-        return img_crop, label_crop
+        images_crop = images[:, y:y+self.crop_size, x:x+self.crop_size]
+        labels_crop = labels[:, y:y+self.crop_size, x:x+self.crop_size]
+        return images_crop, labels_crop
 
     def __call__(self, args):
-        img, label = self.random_crop(args)
-        return img, label
+        images, labels = self.random_crop(args)
+        return images, labels
 
 
 class ImportanceRandomCrop(UniformCrop):

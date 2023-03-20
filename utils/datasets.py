@@ -25,7 +25,7 @@ class AbstractSpaceNet7Dataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         pass
 
-    def _load_planetscope_mosaic(self, aoi_id: str, dataset: str, year: int, month: int) -> np.ndarray:
+    def load_planet_mosaic(self, aoi_id: str, dataset: str, year: int, month: int) -> np.ndarray:
         folder = self.root_path / dataset / aoi_id / 'images_masked'
         file = folder / f'global_monthly_{year}_{month:02d}_mosaic_{aoi_id}.tif'
         img, _, _ = geofiles.read_tif(file)
@@ -39,7 +39,7 @@ class AbstractSpaceNet7Dataset(torch.utils.data.Dataset):
             img = cv2.copyMakeBorder(img, 0, 1024-m, 0, 1024-n, borderType=cv2.BORDER_REPLICATE)
         return img.astype(np.float32)
 
-    def _load_building_label(self, aoi_id: str, year: int, month: int) -> np.ndarray:
+    def load_building_label(self, aoi_id: str, year: int, month: int) -> np.ndarray:
         folder = self.root_path / 'train' / aoi_id / 'labels_raster'
         file = folder / f'global_monthly_{year}_{month:02d}_mosaic_{aoi_id}_Buildings.tif'
         label, _, _ = geofiles.read_tif(file)
@@ -50,13 +50,13 @@ class AbstractSpaceNet7Dataset(torch.utils.data.Dataset):
         label = label > 0
         return label.astype(np.float32)
 
-    def _load_change_label(self, aoi_id: str, year_t1: int, month_t1: int, year_t2: int, month_t2) -> np.ndarray:
-        building_t1 = self._load_building_label(aoi_id, year_t1, month_t1)
-        building_t2 = self._load_building_label(aoi_id, year_t2, month_t2)
+    def load_change_label(self, aoi_id: str, year_t1: int, month_t1: int, year_t2: int, month_t2) -> np.ndarray:
+        building_t1 = self.load_building_label(aoi_id, year_t1, month_t1)
+        building_t2 = self.load_building_label(aoi_id, year_t2, month_t2)
         change = np.logical_and(building_t1 == 0, building_t2 == 1)
         return change.astype(np.float32)
 
-    def _load_mask(self, aoi_id: str, year: int, month: int) -> np.ndarray:
+    def load_mask(self, aoi_id: str, year: int, month: int) -> np.ndarray:
         folder = self.root_path / 'train' / aoi_id / 'labels_raster'
         file = folder / f'global_monthly_{year}_{month:02d}_mosaic_{aoi_id}_mask.tif'
         mask, _, _ = geofiles.read_tif(file)
@@ -112,8 +112,8 @@ class TrainSingleDateDataset(AbstractSpaceNet7Dataset):
         timestamp = timestamps[t]
         dataset, year, month = timestamp['dataset'], timestamp['year'], timestamp['month']
 
-        img = self._load_planetscope_mosaic(aoi_id, dataset, year, month)
-        buildings = self._load_building_label(aoi_id, year, month)
+        img = self.load_planetscope_mosaic(aoi_id, dataset, year, month)
+        buildings = self.load_building_label(aoi_id, year, month)
 
         img, buildings = self.transform((img, buildings))
 
@@ -172,19 +172,18 @@ class TrainTimeseriesDataset(AbstractSpaceNet7Dataset):
         timestamps = [ts for ts in self.metadata[aoi_id] if not ts['mask']]
 
         t_values = sorted(np.random.randint(0, len(timestamps), size=self.T))
-        timestamp = timestamps[t]
-        dataset, year, month = timestamp['dataset'], timestamp['year'], timestamp['month']
+        timestamps = sorted([timestamps[t] for t in t_values], key=lambda ts: int(ts['year']) * 12 + int(ts['month']))
 
-        img = self._load_planetscope_mosaic(aoi_id, dataset, year, month)
-        buildings = self._load_building_label(aoi_id, year, month)
+        images = [self.load_planet_mosaic(ts['aoi_id'], ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
+        labels = [self.load_building_label(ts['aoi_id'], ts['year'], ts['month']) for ts in timestamps]
 
-        img, buildings = self.transform((img, buildings))
+        images, labels = self.transform((np.stack(images), np.stack(labels)))
 
         item = {
-            'x': img,
-            'y': buildings,
+            'x': images,
+            'y': labels,
             'aoi_id': aoi_id,
-            'year': year,
+            'dates': [(int(ts['year']), int(ts['month'])) for ts in timestamps],
         }
 
         return item
@@ -195,6 +194,61 @@ class TrainTimeseriesDataset(AbstractSpaceNet7Dataset):
     def __str__(self):
         return f'Dataset with {self.length} samples.'
 
+
+class EvalTimeseriesDataset(AbstractSpaceNet7Dataset):
+
+    def __init__(self, cfg: experiment_manager.CfgNode, run_type: str):
+        super().__init__(cfg)
+
+        self.T = cfg.DATALOADER.TIMESERIES_LENGTH
+
+        # handling transformations of data
+        self.transform = augmentations.compose_transformations(cfg, no_augmentations=True)
+
+        self.metadata = geofiles.load_json(self.root_path / f'metadata_siamesessl.json')
+
+        if run_type == 'train':
+            self.aoi_ids = list(cfg.DATASET.TRAIN_IDS)
+        elif run_type == 'val':
+            self.aoi_ids = list(cfg.DATASET.VAL_IDS)
+        elif run_type == 'test':
+            self.aoi_ids = list(cfg.DATASET.TEST_IDS)
+        else:
+            raise Exception('unkown run type!')
+
+        manager = multiprocessing.Manager()
+        self.aoi_ids = manager.list(self.aoi_ids)
+        self.metadata = manager.dict(self.metadata)
+
+        self.length = len(self.aoi_ids)
+
+    def __getitem__(self, index):
+
+        aoi_id = self.aoi_ids[index]
+
+        timestamps = [ts for ts in self.metadata[aoi_id] if not ts['mask']]
+        t_values = list(np.linspace(0, len(timestamps), self.T, endpoint=False, dtype=int))
+        timestamps = sorted([timestamps[t] for t in t_values], key=lambda ts: int(ts['year']) * 12 + int(ts['month']))
+
+        images = [self.load_planet_mosaic(ts['aoi_id'], ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
+        labels = [self.load_building_label(ts['aoi_id'], ts['year'], ts['month']) for ts in timestamps]
+
+        images, labels = self.transform((np.stack(images), np.stack(labels)))
+
+        item = {
+            'x': images,
+            'y': labels,
+            'aoi_id': aoi_id,
+            'dates': [(int(ts['year']), int(ts['month'])) for ts in timestamps],
+        }
+
+        return item
+
+    def __len__(self):
+        return self.length
+
+    def __str__(self):
+        return f'Dataset with {self.length} samples.'
 
 class EvalSingleDateDataset(AbstractSpaceNet7Dataset):
 
@@ -233,8 +287,8 @@ class EvalSingleDateDataset(AbstractSpaceNet7Dataset):
         sample = self.samples[index]
         aoi_id, dataset, year, month = sample['aoi_id'], sample['dataset'], sample['year'], sample['month']
 
-        img = self._load_planetscope_mosaic(aoi_id, dataset, year, month)
-        buildings = self._load_building_label(aoi_id, year, month)
+        img = self.load_planet_mosaic(aoi_id, dataset, year, month)
+        buildings = self.load_building_label(aoi_id, year, month)
 
         img, buildings = self.transform((img, buildings))
 
@@ -288,8 +342,8 @@ class EvalSingleAOIDataset(AbstractSpaceNet7Dataset):
         sample = self.samples[index]
         dataset, year, month = sample['dataset'], sample['year'], sample['month']
 
-        img = self._load_planetscope_mosaic(self.aoi_id, dataset, year, month)
-        buildings = self._load_building_label(self.aoi_id, year, month)
+        img = self.load_planet_mosaic(self.aoi_id, dataset, year, month)
+        buildings = self.load_building_label(self.aoi_id, year, month)
 
         img, buildings = self.transform((img, buildings))
 
@@ -305,7 +359,7 @@ class EvalSingleAOIDataset(AbstractSpaceNet7Dataset):
     def get_dims(self) -> tuple:
         sample = self.samples[0]
         dataset, year, month = sample['dataset'], sample['year'], sample['month']
-        buildings = self._load_building_label(self.aoi_id, year, month)
+        buildings = self.load_building_label(self.aoi_id, year, month)
         m, n, _ = buildings.shape
         return (m, n)
 
