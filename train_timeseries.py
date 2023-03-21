@@ -44,7 +44,6 @@ def run_training(cfg: experiment_manager.CfgNode):
     trigger_times = 0
     stop_training = False
 
-    lstm_states_prev = None
     for epoch in range(1, epochs + 1):
         print(f'Starting epoch {epoch}/{epochs}.')
 
@@ -58,24 +57,9 @@ def run_training(cfg: experiment_manager.CfgNode):
 
             # => TimeStep, BatchSize, ...
             x = batch['x'].to(device).transpose(0, 1)
-            T = x.shape[0]
-
-            lstm_states = None
-            logits = []
-            if net.module.is_lstm_net():
-                for t in range(T):
-                    if t != 0:
-                        lstm_states = lstm_states_prev
-                    logits_t, lstm_states_prev = net(x[t].unsqueeze(0), lstm_states)
-                    logits.append(logits_t)
-            else:
-                assert(T == 1)
-                logits_t = net(x)
-                logits.append(logits_t)
+            logits = net(x)
 
             y = batch['y'].to(device).transpose(0, 1)
-            logits = torch.concat(logits, dim=0)
-
             loss = criterion(logits, y)
             loss.backward()
             optimizer.step()

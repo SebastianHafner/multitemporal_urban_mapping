@@ -10,25 +10,31 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class set_values(nn.Module):
-    def __init__(self, hidden_size, height, width):
+    def __init__(self, hidden_size, height, width, seq):
         super(set_values, self).__init__()
         self.hidden_size = int(hidden_size)
         self.height = int(height)
         self.width = int(width)
         self.RCell = blocks.RNNCell(self.hidden_size, self.hidden_size)
+        self.seq = seq
 
-    def forward(self, seq, xinp):
-        xout = Variable(torch.zeros(xinp.size()[0], xinp.size()[1], self.hidden_size, self.height, self.width))\
-            .to(device)
-        h_state = Variable(torch.zeros(xinp[0].shape[0], self.hidden_size, self.height, self.width)).to(device)
-        c_state = Variable(torch.zeros(xinp[0].shape[0], self.hidden_size, self.height, self.width)).to(device)
+    def forward(self, x: torch.tensor):
+        T, BS = x.size()[:2]
 
-        for t in range(xinp.size()[0]):
-            input_t = seq(xinp[t])
+        # collecting lstm outputs for each timestamp
+        xout = Variable(torch.zeros(T, BS, self.hidden_size, self.height, self.width)).to(device)
+        h_states = Variable(torch.zeros(T, BS, self.hidden_size, self.height, self.width)).to(device)
+
+        h_state = Variable(torch.zeros(BS, self.hidden_size, self.height, self.width)).to(device)
+        c_state = Variable(torch.zeros(BS, self.hidden_size, self.height, self.width)).to(device)
+
+        for t in range(T):
+            input_t = self.seq(x[t])
             xout[t] = input_t
             h_state, c_state = self.RCell(input_t, h_state, c_state)
+            h_states[t] = h_state
 
-        return h_state, xout
+        return h_states, xout
 
 
 class LUNet(nn.Module):
@@ -43,73 +49,48 @@ class LUNet(nn.Module):
         self.Maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
 
         self.Conv1 = blocks.DoubleConv(n_channels, 16)
-        self.set1 = set_values(16, self.patch_size, self.patch_size)
+        self.set1 = set_values(16, self.patch_size, self.patch_size, self.Conv1)
 
         self.Conv2 = blocks.DoubleConv(16, 32)
-        self.set2 = set_values(32, self.patch_size / 2, self.patch_size / 2)
+        self.set2 = set_values(32, self.patch_size / 2, self.patch_size / 2, nn.Sequential(self.Maxpool, self.Conv2))
 
         self.Conv3 = blocks.DoubleConv(32, 64)
-        self.set3 = set_values(64, self.patch_size / 4, self.patch_size / 4)
+        self.set3 = set_values(64, self.patch_size / 4, self.patch_size / 4, nn.Sequential(self.Maxpool, self.Conv3))
 
         self.Up3 = blocks.up_conv(ch_in=64, ch_out=32)
         self.Up_conv3 = blocks.DoubleConv(64, 32)
-        self.Up3_segm = blocks.up_conv(ch_in=64, ch_out=32)
-        self.Up_conv3_segm = blocks.DoubleConv(64, 32)
 
         self.Up2 = blocks.up_conv(ch_in=32, ch_out=16)
         self.Up_conv2 = blocks.DoubleConv(32, 16)
-        self.Up2_segm = blocks.up_conv(ch_in=32, ch_out=16)
-        self.Up_conv2_segm = blocks.DoubleConv(32, 16)
 
         self.Conv_1x1 = nn.Conv2d(16, n_classes, kernel_size=1, stride=1, padding=0)
-        self.Conv_1x1_segm = nn.Conv2d(16, n_classes, kernel_size=1, stride=1, padding=0)
 
-    def forward(self, input: torch.tensor) -> tuple:
-        # input (TS, BS, C, H, W)
-        x1, x2, x3, s1, s2, s3, a1, a2, a3 = self.encoder(input)
+    def forward(self, x: torch.tensor) -> tuple:
+        T, BS, _, H, W = x.size()
 
-        d1 = self.decoder_lstm(x1, x2, x3)
-        segm1 = self.decoder_segm(s1, s2, s3)
-        segm2 = self.decoder_segm(a1, a2, a3)
-        return d1, segm1, segm2
+        # encoder
+        x1, xout = self.set1(x)
+        x2, xout = self.set2(xout)
+        x3, xout = self.set3(xout)
 
-    def encoder(self, x):
-        x1, xout = self.set1(self.Conv1, x)
-        s1 = xout[0]
-        a1 = xout[-1]
+        # decoding all lstm outputs
+        sout = Variable(torch.zeros(T, BS, 1, H, W)).to(device)
+        for t in range(T):
+            s_t = self.decoder(x1[t], x2[t], x3[t])
+            sout[t] = s_t
 
-        x2, xout = self.set2(nn.Sequential(self.Maxpool, self.Conv2), xout)
-        s2 = xout[0]
-        a2 = xout[-1]
+        return sout
 
-        x3, xout = self.set3(nn.Sequential(self.Maxpool, self.Conv3), xout)
-        s3 = xout[0]
-        a3 = xout[-1]
+    def decoder(self, x1: torch.tensor, x2: torch.tensor, x3: torch.tensor) -> torch.tensor:
 
-        return x1, x2, x3, s1, s2, s3, a1, a2, a3,
+        s3 = self.Up3(x3)
+        s3 = torch.cat((s3, x2), dim=1)
+        s3 = self.Up_conv3(s3)
 
-    def decoder_lstm(self, x1, x2, x3):
-        d3 = self.Up3(x3)
-        d3 = torch.cat((d3, x2), dim=1)
-        d3 = self.Up_conv3(d3)
+        s2 = self.Up2(s3)
+        s2 = torch.cat((s2, x1), dim=1)
+        s2 = self.Up_conv2(s2)
 
-        d2 = self.Up2(d3)
-        d2 = torch.cat((d2, x1), dim=1)
-        d2 = self.Up_conv2(d2)
+        s1 = self.Conv_1x1(s2)
 
-        d1 = self.Conv_1x1(d2)
-
-        return d1
-
-    def decoder_segm(self, s1, s2, s3):
-        d3 = self.Up3_segm(s3)
-        d3 = torch.cat((d3, s2), dim=1)
-        d3 = self.Up_conv3_segm(d3)
-
-        d2 = self.Up2_segm(d3)
-        d2 = torch.cat((d2, s1), dim=1)
-        d2 = self.Up_conv2_segm(d2)
-
-        d1 = self.Conv_1x1_segm(d2)
-
-        return d1
+        return s1

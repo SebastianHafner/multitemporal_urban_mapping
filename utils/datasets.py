@@ -139,7 +139,7 @@ class EvalDataset(AbstractSpaceNet7Dataset):
     def __init__(self, cfg: experiment_manager.CfgNode, run_type: str, tiling: int = None):
         super().__init__(cfg)
 
-        self.T = cfg.DATALOADER.EVAL.TIMESERIES_LENGTH
+        self.T = cfg.DATALOADER.EVAL_TIMESERIES_LENGTH
         self.tiling = tiling
 
         # handling transformations of data
@@ -181,11 +181,11 @@ class EvalDataset(AbstractSpaceNet7Dataset):
         timestamps = sorted([timestamps[t] for t in t_values], key=lambda ts: int(ts['year']) * 12 + int(ts['month']))
 
         images = [self.load_planet_mosaic(ts['aoi_id'], ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
-        images = np.stack(images)[:, :, i:i + self.tiling, j:j + self.tiling]
+        images = np.stack(images)[:, i:i + self.tiling, j:j + self.tiling]
         labels = [self.load_building_label(ts['aoi_id'], ts['year'], ts['month']) for ts in timestamps]
-        labels = np.stack(labels)[:, :, i:i + self.tiling, j:j + self.tiling]
+        labels = np.stack(labels)[:, i:i + self.tiling, j:j + self.tiling]
 
-        images, labels = self.transform(images, labels)
+        images, labels = self.transform((images, labels))
 
         item = {
             'x': images,

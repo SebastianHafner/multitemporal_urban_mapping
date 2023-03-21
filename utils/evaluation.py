@@ -6,22 +6,26 @@ import numpy as np
 
 
 class TCMeasurer(object):
-    def __init__(self, aoi_id: str, threshold: float = 0.5):
+    def __init__(self, threshold: float = 0.5):
 
-        self.aoi_id = aoi_id
         self.threshold = threshold
-        self.y_hats, self.ys = [], []
-        self.T = 0
+        self.unsupervised_tc_values = []
+        self.supervised_tc_values = []
 
         self.eps = 10e-05
 
     def add_sample(self, y: torch.Tensor, y_hat: torch.Tensor):
+        # y and y_hat (T, BS, 1, H, W)
+        T, BS, _, H, W = y.size()
+
         y = y.bool()
         y_hat = y_hat > self.threshold
 
-        self.y_hats.append(y_hat.squeeze())
-        self.ys.append(y.squeeze())
-        self.T += 1
+        for b in range(BS):
+            unsup_tc = self.unsupervised_tc(y[:, b], y_hat[:, b])
+            self.unsupervised_tc_values.append(unsup_tc.cpu().item())
+            sup_tc = self.supervised_tc(y[:, b], y_hat[:, b])
+            self.supervised_tc_values.append(sup_tc.cpu().item())
 
     def _iou(self, y: torch.Tensor, y_hat: torch.Tensor) -> torch.tensor:
         tp = torch.sum(y & y_hat).float()
@@ -30,27 +34,32 @@ class TCMeasurer(object):
         return tp / (tp + fp + fn + self.eps)
 
     # https://ieeexplore.ieee.org/document/9150870
-    def unsupervised_tc(self) -> torch.tensor:
+    def unsupervised_tc(self, y: torch.Tensor, y_hat: torch.Tensor) -> torch.tensor:
+        # y and y_hat (T, H, W)
+        T = y.size()[0]
         sum_tc = 0
-        for t in range(1, self.T):
-            sum_tc += self._iou(self.ys[t], self.y_hats[t])
-        return (1 / (self.T - 1)) * sum_tc
+        for t in range(1, T):
+            sum_tc += self._iou(y[t], y_hat[t])
+        return (1 / (T - 1)) * sum_tc
 
-    def supervised_tc(self) -> torch.tensor:
-        consistency = np.empty((self.T - 1))
-        for t in range(1, self.T):
-            diff_y_hats = self.y_hats[t - 1] != self.y_hats[t]
-            diff_ys = self.ys[t - 1] != self.ys[t]
-            inconsistencies = diff_y_hats & np.logical_not(diff_ys)
-            consistency[t - 1] = 1 - (inconsistencies.sum() / (np.logical_not(diff_ys)).sum())
-        return consistency
+    def supervised_tc(self, y: torch.Tensor, y_hat: torch.Tensor) -> torch.tensor:
+        # y and y_hat (T, H, W)
+        T = y.size()[0]
+        consistency = torch.empty((T - 1))
+        for t in range(1, T):
+            diff_y_hat = y[t - 1] != y_hat[t]
+            diff_y = y[t - 1] != y[t]
+            inconsistencies = diff_y_hat & torch.logical_not(diff_y)
+            consistency[t - 1] = 1 - (torch.sum(inconsistencies) / (torch.sum(torch.logical_not(diff_y))))
+        return torch.mean(consistency)
 
     def is_empty(self):
-        return True if self.T == 0 else False
+        assert(len(self.unsupervised_tc_values) == len(self.supervised_tc_values))
+        return True if len(self.supervised_tc_values) == 0 else False
 
     def reset(self):
-        self.y_hats, self.ys = [], []
-        self.T = 0
+        self.unsupervised_tc_values = []
+        self.supervised_tc_values = []
 
 
 class Measurer(object):
@@ -106,12 +115,13 @@ class Measurer(object):
 
 
 def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
-    ds = datasets.EvalDataset(cfg, run_type)
+    ds = datasets.EvalDataset(cfg, run_type, tiling=cfg.AUGMENTATION.CROP_SIZE)
 
     net.to(device)
     net.eval()
 
     measurer = Measurer()
+    measurer_tc = TCMeasurer()
 
     dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE, num_workers=0, shuffle=False,
                                        drop_last=False)
@@ -119,32 +129,24 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
     for step, item in enumerate(dataloader):
         # => TimeStep, BatchSize, ...
         x = item['x'].to(device).transpose(0, 1)
-        T = x.shape[0]
 
-        lstm_states = None
-        logits = []
         with torch.no_grad():
-            if net.module.is_lstm_net():
-                for t in range(T):
-                    if t != 0:
-                        lstm_states = lstm_states_prev
-                    logits_t, lstm_states_prev = net(x[t].unsqueeze(0), lstm_states)
-                    logits.append(logits_t)
-            else:
-                assert (T == 1)
-                logits_t = net(x)
-                logits.append(logits_t)
+            logits = net(x)
 
         y = item['y'].to(device).transpose(0, 1)
-        logits = torch.concat(logits, dim=0)
         y_hat = torch.sigmoid(logits)
 
         measurer.add_sample(y, y_hat.detach())
+        measurer_tc.add_sample(y, y_hat.detach())
 
     f1 = measurer.f1()
+    sup_tc = np.mean(measurer_tc.supervised_tc_values)
+    unsup_tc = np.mean(measurer_tc.unsupervised_tc_values)
 
     wandb.log({
         f'{run_type} f1': f1,
+        f'{run_type} unsup_tc': unsup_tc,
+        f'{run_type} sup_tc': sup_tc,
         'step': step, 'epoch': epoch,
     })
 
