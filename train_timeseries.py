@@ -8,12 +8,11 @@ from torch.utils import data as torch_data
 
 import wandb
 import numpy as np
-from pathlib import Path
 
 from utils import networks, datasets, loss_functions, evaluation, experiment_manager, parsers
 
 
-def run_training(cfg):
+def run_training(cfg: experiment_manager.CfgNode):
     net = networks.create_network(cfg)
     net.to(device)
     optimizer = optim.AdamW(net.parameters(), lr=cfg.TRAINER.LR, weight_decay=0.01)
@@ -21,7 +20,7 @@ def run_training(cfg):
     criterion = loss_functions.get_criterion(cfg.MODEL.LOSS_TYPE)
 
     # reset the generators
-    dataset = datasets.TrainTimeseriesDataset(cfg=cfg, run_type='train')
+    dataset = datasets.TrainDataset(cfg=cfg, run_type='train')
     print(dataset)
 
     dataloader_kwargs = {
@@ -104,8 +103,8 @@ def run_training(cfg):
         assert (epoch == epoch_float)
         print(f'epoch float {epoch_float} (step {global_step}) - epoch {epoch}')
         # evaluation at the end of an epoch
-        _ = evaluation.model_evaluation_timeseries(net, cfg, device, 'train', epoch_float, global_step)
-        f1_val = evaluation.model_evaluation_timeseries(net, cfg, device, 'val', epoch_float, global_step)
+        _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
+        f1_val = evaluation.model_evaluation(net, cfg, device, 'val', epoch_float, global_step)
 
         if f1_val > best_f1_val:
             best_f1_val = f1_val
@@ -121,7 +120,7 @@ def run_training(cfg):
             break
 
     net, *_ = networks.load_checkpoint(cfg, device)
-    _ = evaluation.model_evaluation_timeseries(net, cfg, device, 'test', epoch_float, global_step)
+    _ = evaluation.model_evaluation(net, cfg, device, 'test', epoch_float, global_step)
 
 
 if __name__ == '__main__':

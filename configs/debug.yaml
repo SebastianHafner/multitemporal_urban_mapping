@@ -1,2 +1,2 @@
-_BASE_: "espnetl1b.yaml"
+_BASE_: "lunet.yaml"
 DEBUG: True

@@ -72,74 +72,13 @@ class AbstractSpaceNet7Dataset(torch.utils.data.Dataset):
         return f'Dataset with {self.length} samples.'
 
 
-class TrainSingleDateDataset(AbstractSpaceNet7Dataset):
+class TrainDataset(AbstractSpaceNet7Dataset):
 
     def __init__(self, cfg: experiment_manager.CfgNode, run_type: str, no_augmentations: bool = False,
                  disable_multiplier: bool = False):
         super().__init__(cfg)
 
-        # handling transformations of data
-        self.no_augmentations = no_augmentations
-        self.transform = augmentations.compose_transformations(cfg, no_augmentations)
-
-        self.metadata = geofiles.load_json(self.root_path / f'metadata_siamesessl.json')
-
-        if run_type == 'train':
-            self.aoi_ids = list(cfg.DATASET.TRAIN_IDS)
-        elif run_type == 'val':
-            self.aoi_ids = list(cfg.DATASET.VAL_IDS)
-        elif run_type == 'test':
-            self.aoi_ids = list(cfg.DATASET.TEST_IDS)
-        else:
-            raise Exception('unkown run type!')
-
-        if not disable_multiplier:
-            self.aoi_ids = self.aoi_ids * cfg.DATALOADER.TRAINING_MULTIPLIER
-
-        manager = multiprocessing.Manager()
-        self.aoi_ids = manager.list(self.aoi_ids)
-        self.metadata = manager.dict(self.metadata)
-
-        self.length = len(self.aoi_ids)
-
-    def __getitem__(self, index):
-
-        aoi_id = self.aoi_ids[index]
-
-        timestamps = [ts for ts in self.metadata[aoi_id] if not ts['mask']]
-
-        t = sorted(np.random.randint(0, len(timestamps), size=1))[0]
-        timestamp = timestamps[t]
-        dataset, year, month = timestamp['dataset'], timestamp['year'], timestamp['month']
-
-        img = self.load_planetscope_mosaic(aoi_id, dataset, year, month)
-        buildings = self.load_building_label(aoi_id, year, month)
-
-        img, buildings = self.transform((img, buildings))
-
-        item = {
-            'x': img,
-            'y': buildings,
-            'aoi_id': aoi_id,
-            'year': year,
-        }
-
-        return item
-
-    def __len__(self):
-        return self.length
-
-    def __str__(self):
-        return f'Dataset with {self.length} samples.'
-
-
-class TrainTimeseriesDataset(AbstractSpaceNet7Dataset):
-
-    def __init__(self, cfg: experiment_manager.CfgNode, run_type: str, no_augmentations: bool = False,
-                 disable_multiplier: bool = False):
-        super().__init__(cfg)
-
-        self.T = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.T = cfg.DATALOADER.TRAIN_TIMESERIES_LENGTH
 
         # handling transformations of data
         self.no_augmentations = no_augmentations
@@ -195,12 +134,13 @@ class TrainTimeseriesDataset(AbstractSpaceNet7Dataset):
         return f'Dataset with {self.length} samples.'
 
 
-class EvalTimeseriesDataset(AbstractSpaceNet7Dataset):
+class EvalDataset(AbstractSpaceNet7Dataset):
 
-    def __init__(self, cfg: experiment_manager.CfgNode, run_type: str):
+    def __init__(self, cfg: experiment_manager.CfgNode, run_type: str, tiling: int = None):
         super().__init__(cfg)
 
-        self.T = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.T = cfg.DATALOADER.EVAL.TIMESERIES_LENGTH
+        self.tiling = tiling
 
         # handling transformations of data
         self.transform = augmentations.compose_transformations(cfg, no_augmentations=True)
@@ -215,6 +155,16 @@ class EvalTimeseriesDataset(AbstractSpaceNet7Dataset):
             self.aoi_ids = list(cfg.DATASET.TEST_IDS)
         else:
             raise Exception('unkown run type!')
+
+        if tiling is None:
+            self.tiling = 1024
+            self.samples = [(aoi_id, (0, 0)) for aoi_id in self.aoi_ids]
+        else:
+            self.samples = []
+            for aoi_id in self.aoi_ids:
+                for i in range(0, self.tiling, 1024):
+                    for j in range(0, self.tiling, 1024):
+                        self.samples.append((aoi_id, (i, j)))
 
         manager = multiprocessing.Manager()
         self.aoi_ids = manager.list(self.aoi_ids)
@@ -224,88 +174,29 @@ class EvalTimeseriesDataset(AbstractSpaceNet7Dataset):
 
     def __getitem__(self, index):
 
-        aoi_id = self.aoi_ids[index]
+        aoi_id, (i, j) = self.samples[index]
 
         timestamps = [ts for ts in self.metadata[aoi_id] if not ts['mask']]
         t_values = list(np.linspace(0, len(timestamps), self.T, endpoint=False, dtype=int))
         timestamps = sorted([timestamps[t] for t in t_values], key=lambda ts: int(ts['year']) * 12 + int(ts['month']))
 
         images = [self.load_planet_mosaic(ts['aoi_id'], ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
+        images = np.stack(images)[:, :, i:i + self.tiling, j:j + self.tiling]
         labels = [self.load_building_label(ts['aoi_id'], ts['year'], ts['month']) for ts in timestamps]
+        labels = np.stack(labels)[:, :, i:i + self.tiling, j:j + self.tiling]
 
-        images, labels = self.transform((np.stack(images), np.stack(labels)))
+        images, labels = self.transform(images, labels)
 
         item = {
             'x': images,
             'y': labels,
             'aoi_id': aoi_id,
+            'i': i,
+            'j': j,
             'dates': [(int(ts['year']), int(ts['month'])) for ts in timestamps],
         }
 
         return item
-
-    def __len__(self):
-        return self.length
-
-    def __str__(self):
-        return f'Dataset with {self.length} samples.'
-
-class EvalSingleDateDataset(AbstractSpaceNet7Dataset):
-
-    def __init__(self, cfg: experiment_manager.CfgNode, run_type: str):
-        super().__init__(cfg)
-
-        # handling transformations of data
-        self.transform = augmentations.compose_transformations(cfg, no_augmentations=True)
-
-        self.metadata = geofiles.load_json(self.root_path / f'metadata_siamesessl.json')
-
-        if run_type == 'train':
-            self.aoi_ids = list(cfg.DATASET.TRAIN_IDS)
-        elif run_type == 'val':
-            self.aoi_ids = list(cfg.DATASET.VAL_IDS)
-        elif run_type == 'test':
-            self.aoi_ids = list(cfg.DATASET.TEST_IDS)
-        else:
-            raise Exception('unkown run type!')
-
-        self.samples = []
-        for aoi_id in self.aoi_ids:
-            for timestamp in self.metadata[aoi_id]:
-                if not timestamp['mask']:
-                    self.samples.append(timestamp)
-
-        manager = multiprocessing.Manager()
-        self.aoi_ids = manager.list(self.aoi_ids)
-        self.samples = manager.list(self.samples)
-        self.metadata = manager.dict(self.metadata)
-
-        self.length = len(self.samples)
-
-    def __getitem__(self, index):
-
-        sample = self.samples[index]
-        aoi_id, dataset, year, month = sample['aoi_id'], sample['dataset'], sample['year'], sample['month']
-
-        img = self.load_planet_mosaic(aoi_id, dataset, year, month)
-        buildings = self.load_building_label(aoi_id, year, month)
-
-        img, buildings = self.transform((img, buildings))
-
-        item = {
-            'x': img,
-            'y': buildings,
-            'aoi_id': aoi_id,
-            'year': year,
-        }
-
-        return item
-
-    def get_index(self, aoi_id: str) -> int:
-        for index, candidate_aoi_id in enumerate(self.aoi_ids):
-            if aoi_id == candidate_aoi_id:
-                return index
-        return None
 
     def __len__(self):
         return self.length

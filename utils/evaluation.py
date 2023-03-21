@@ -2,6 +2,7 @@ import torch
 from torch.utils import data as torch_data
 import wandb
 from utils import datasets
+import numpy as np
 
 
 class TCMeasurer(object):
@@ -10,6 +11,7 @@ class TCMeasurer(object):
         self.aoi_id = aoi_id
         self.threshold = threshold
         self.y_hats, self.ys = [], []
+        self.T = 0
 
         self.eps = 10e-05
 
@@ -19,23 +21,36 @@ class TCMeasurer(object):
 
         self.y_hats.append(y_hat.squeeze())
         self.ys.append(y.squeeze())
+        self.T += 1
 
-    def iou(self, y: torch.Tensor, y_hat: torch.Tensor) -> torch.tensor:
+    def _iou(self, y: torch.Tensor, y_hat: torch.Tensor) -> torch.tensor:
         tp = torch.sum(y & y_hat).float()
         fp = torch.sum(y_hat & ~y).float()
         fn = torch.sum(~y_hat & y).float()
         return tp / (tp + fp + fn + self.eps)
 
-    def tc(self) -> torch.tensor:
-        # https://ieeexplore.ieee.org/document/9150870
-        T = len(self.y_hats)
+    # https://ieeexplore.ieee.org/document/9150870
+    def unsupervised_tc(self) -> torch.tensor:
         sum_tc = 0
-        for t in range(1, T):
-            sum_tc += self.iou(self.ys[t], self.y_hats[t])
-        return (1 / (T - 1)) * sum_tc
+        for t in range(1, self.T):
+            sum_tc += self._iou(self.ys[t], self.y_hats[t])
+        return (1 / (self.T - 1)) * sum_tc
+
+    def supervised_tc(self) -> torch.tensor:
+        consistency = np.empty((self.T - 1))
+        for t in range(1, self.T):
+            diff_y_hats = self.y_hats[t - 1] != self.y_hats[t]
+            diff_ys = self.ys[t - 1] != self.ys[t]
+            inconsistencies = diff_y_hats & np.logical_not(diff_ys)
+            consistency[t - 1] = 1 - (inconsistencies.sum() / (np.logical_not(diff_ys)).sum())
+        return consistency
 
     def is_empty(self):
-        return True if len(self.y_hats) == 0 else False
+        return True if self.T == 0 else False
+
+    def reset(self):
+        self.y_hats, self.ys = [], []
+        self.T = 0
 
 
 class Measurer(object):
@@ -91,38 +106,7 @@ class Measurer(object):
 
 
 def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
-
-    ds = datasets.EvalSingleDateDataset(cfg, run_type)
-
-    net.to(device)
-    net.eval()
-
-    measurer = Measurer()
-
-    dataloader = torch_data.DataLoader(ds, batch_size=1, num_workers=0, shuffle=False, drop_last=False)
-
-    for step, item in enumerate(dataloader):
-        x = item['x'].to(device)
-
-        with torch.no_grad():
-            logits = net(x)
-            y_hat = torch.sigmoid(logits)
-
-        y = item['y'].to(device)
-        measurer.add_sample(y, y_hat.detach())
-
-    f1 = measurer.f1()
-
-    wandb.log({
-        f'{run_type} f1': f1,
-        'step': step, 'epoch': epoch,
-    })
-
-    return f1
-
-
-def model_evaluation_timeseries(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
-    ds = datasets.EvalTimeseriesDataset(cfg, run_type)
+    ds = datasets.EvalDataset(cfg, run_type)
 
     net.to(device)
     net.eval()
