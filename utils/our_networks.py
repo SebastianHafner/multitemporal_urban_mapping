@@ -28,10 +28,7 @@ class UNet(nn.Module):
         T, BS, _, H, W = x.size()
         out = Variable(torch.zeros(T, BS, 1, H, W)).to(device)
         for t in range(T):
-            x1 = self.inc(x[t])
-            x2 = self.encoder(x1)
-            x3 = self.decoder(x2)
-            out[t] = self.outc(x3)
+            out[t] = self.outc(self.decoder(self.encoder(self.inc(x[t]))))
         return out
 
 
