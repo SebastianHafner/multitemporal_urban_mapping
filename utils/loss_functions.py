@@ -202,55 +202,40 @@ def soft_dice_loss_balanced(input: torch.Tensor, target: torch.Tensor):
 
 
 # https://github.com/SebastianHafner/f2f-consistent-semantic-segmentation/blob/master/model/loss.py
-def inconsistency_loss(logits, target, consistency_function):
+def inconsistency_loss(logits, target, consistency_function, threshold: float = 0.5):
     # output: Time, BatchSize, Height, Width
     # labels: Time, BatchSize, Height, Width
-    pred = torch.sigmoid(logits)
+    prob = torch.sigmoid(logits)
+    pred = (prob > threshold).to(torch.float32)
     valid_mask_sum = torch.tensor([0.0], dtype=torch.float32, device=pred.device)
     inconsistencies_sum = torch.tensor([0.0], dtype=torch.float32, device=pred.device)
 
     for t in range(pred.shape[0] - 1):
         gt1 = target[t]
         gt2 = target[t + 1]
+        cons_gt = (gt1 == gt2).to(torch.float32)
 
-        if consistency_function == 'argmax_pred':
-            pred1 = pred[t]
-            pred2 = pred[t + 1]
-            diff_pred = (pred1 != pred2)
-        elif consistency_function == 'abs_diff':
+        if consistency_function == 'abs_diff':
             diff_pred = torch.abs(pred[t] - pred[t + 1]).sum(dim=1)
         elif consistency_function == 'sq_diff':
-            diff_pred = torch.pow(pred[t] - pred[t + 1], 2).sum(dim=1)
+            diff_pred = torch.pow(pred[t] - pred[t + 1], 2)
+            diff_pred = diff_pred.sum(dim=1)
         elif consistency_function == 'abs_diff_true':
             pred1 = pred[t]
             pred2 = pred[t + 1]
-            right_pred_mask = (pred1 == gt1) | (pred2 == gt2)
-            diff_pred = torch.abs(output[t] - output[t + 1])
-            diff_pred_true = torch.gather(diff_pred, dim=1, index=target_select[t]).squeeze(dim=1)
-            diff_pred_valid = diff_pred_true * (valid_mask2 & right_pred_mask).to(dtype=output.dtype)
+            # semantic prediction has to be correct for at least one timestamp (t1 or t2)
+            right_pred_mask = torch.logical_or((pred1 == gt1), (pred2 == gt2)).to(torch.float32)
+            diff_pred = torch.abs(prob[t] - prob[t + 1]) * right_pred_mask
         elif consistency_function == 'sq_diff_true':
             pred1 = pred[t]
             pred2 = pred[t + 1]
-            right_pred_mask = (pred1 == gt1) | (pred2 == gt2)
-            diff_pred = torch.pow(output[t] - output[t + 1], 2)
-            diff_pred_true = torch.gather(diff_pred, dim=1, index=target_select[t]).squeeze(dim=1)
-            diff_pred_valid = diff_pred_true * (valid_mask2 & right_pred_mask).to(dtype=output.dtype)
-        elif consistency_function == 'sq_diff_true_XOR':
-            pred1 = pred[t]
-            pred2 = pred[t + 1]
-            right_pred_mask = (pred1 == gt1) ^ (pred2 == gt2)
-            diff_pred = torch.pow(output[t] - output[t + 1], 2)
-            diff_pred_true = torch.gather(diff_pred, dim=1, index=target_select[t]).squeeze(dim=1)
-            diff_pred_valid = diff_pred_true * (valid_mask2 & right_pred_mask).to(dtype=output.dtype)
-        elif consistency_function == 'abs_diff_th20':
-            th_mask = (output[t] > 0.2) & (output[t + 1] > 0.2)
-            diff_pred_valid = (torch.abs((output[t] - output[t + 1]) * th_mask.to(dtype=output.dtype))).sum(
-                dim=1) * valid_mask2.to(output.dtype)
+            right_pred_mask = torch.logical_or((pred1 == gt1), (pred2 == gt2))
+            diff_pred = torch.pow(prob[t] - prob[t + 1], 2) * right_pred_mask
+        else:
+            raise Exception('unkown consistency function')
 
-        diff_gt = gt1 != gt2  # torch.uint8
-        diff_gt_dil = sp_img.binary_dilation(diff_gt.cpu().numpy(), iterations=2)  # default: 4-neighbourhood
-        inconsistencies = diff_pred * torch.from_numpy(np.logical_not(diff_gt_dil).astype(np.uint8)).to(
-            pred.device, dtype=pred.dtype)
+        inconsistencies = diff_pred * cons_gt
         inconsistencies_sum += inconsistencies.sum()
+        valid_mask_sum += cons_gt.sum()
 
     return inconsistencies_sum

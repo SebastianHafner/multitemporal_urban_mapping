@@ -61,7 +61,7 @@ def run_training(cfg: experiment_manager.CfgNode):
 
             y = batch['y'].to(device).transpose(0, 1)
             loss_seg = criterion_seg(logits, y)
-            loss_tc = criterion_tc(logits, y, 'sq_diff')
+            loss_tc = cfg.TRAINER.LAMBDA * criterion_tc(logits, y, 'abs_diff_true')
 
             loss = loss_seg + loss_tc
 

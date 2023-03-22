@@ -8,6 +8,7 @@ TRAINER:
   EPOCHS: 100
   OPTIMIZER: 'adamw'
   PATIENCE: 5
+  LAMBDA: 1
 
 MODEL:
   TYPE: 'unet'
