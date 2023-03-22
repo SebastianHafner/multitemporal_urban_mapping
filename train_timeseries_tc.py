@@ -17,7 +17,7 @@ def run_training(cfg: experiment_manager.CfgNode):
     net.to(device)
     optimizer = optim.AdamW(net.parameters(), lr=cfg.TRAINER.LR, weight_decay=0.01)
 
-    criterion = loss_functions.get_criterion(cfg.MODEL.LOSS_TYPE)
+    criterion_seg = loss_functions.get_criterion(cfg.MODEL.LOSS_TYPE)
     criterion_tc = loss_functions.inconsistency_loss
 
     # reset the generators
@@ -52,7 +52,6 @@ def run_training(cfg: experiment_manager.CfgNode):
         loss_set, loss_seg_set, loss_tc_set = [], [], []
 
         for i, batch in enumerate(dataloader):
-
             net.train()
             optimizer.zero_grad()
 
@@ -61,7 +60,7 @@ def run_training(cfg: experiment_manager.CfgNode):
             logits = net(x)
 
             y = batch['y'].to(device).transpose(0, 1)
-            loss_seg = criterion(logits, y)
+            loss_seg = criterion_seg(logits, y)
             loss_tc = criterion_tc(logits, y, 'sq_diff')
 
             loss = loss_seg + loss_tc

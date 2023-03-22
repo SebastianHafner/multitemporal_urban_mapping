@@ -201,28 +201,7 @@ def soft_dice_loss_balanced(input: torch.Tensor, target: torch.Tensor):
     return 1 - dice_pos - dice_neg
 
 
-
 # https://github.com/SebastianHafner/f2f-consistent-semantic-segmentation/blob/master/model/loss.py
-
-def video_loss(output, target, cross_entropy_lambda, consistency_lambda, consistency_function, ignore_class):
-    # output: Time, BatchSize, Channels, Height, Width
-    # labels: Time, BatchSize, Height, Width
-    target_select = target.clone()
-    target_select[target_select == ignore_class] = 0
-    target_select = target_select[:, :, None, :, :].long()
-
-    loss_cross_entropy = torch.tensor([0.0], dtype=torch.float32, device=output.device)
-    if cross_entropy_lambda > 0:
-        loss_cross_entropy = cross_entropy_lambda * cross_entropy_loss(output, target_select, valid_mask)
-
-    loss_inconsistency = torch.tensor([0.0], dtype=torch.float32, device=output.device)
-    if consistency_lambda > 0 and output.shape[0] > 1:
-        loss_inconsistency = consistency_lambda * inconsistency_loss(output, target, consistency_function, valid_mask,
-                                                                     target_select)
-
-    return loss_cross_entropy, loss_inconsistency
-
-
 def inconsistency_loss(logits, target, consistency_function):
     # output: Time, BatchSize, Height, Width
     # labels: Time, BatchSize, Height, Width
@@ -237,11 +216,11 @@ def inconsistency_loss(logits, target, consistency_function):
         if consistency_function == 'argmax_pred':
             pred1 = pred[t]
             pred2 = pred[t + 1]
-            diff_pred_valid = (pred1 != pred2)
+            diff_pred = (pred1 != pred2)
         elif consistency_function == 'abs_diff':
-            diff_pred_valid = torch.abs(pred[t] - pred[t + 1]).sum(dim=1)
+            diff_pred = torch.abs(pred[t] - pred[t + 1]).sum(dim=1)
         elif consistency_function == 'sq_diff':
-            diff_pred_valid = torch.pow(pred[t] - pred[t + 1], 2).sum(dim=1)
+            diff_pred = torch.pow(pred[t] - pred[t + 1], 2).sum(dim=1)
         elif consistency_function == 'abs_diff_true':
             pred1 = pred[t]
             pred2 = pred[t + 1]
