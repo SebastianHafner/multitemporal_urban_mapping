@@ -223,10 +223,10 @@ def video_loss(output, target, cross_entropy_lambda, consistency_lambda, consist
     return loss_cross_entropy, loss_inconsistency
 
 
-
-def inconsistency_loss(pred, target, consistency_function):
+def inconsistency_loss(logits, target, consistency_function):
     # output: Time, BatchSize, Height, Width
     # labels: Time, BatchSize, Height, Width
+    pred = torch.sigmoid(logits)
     valid_mask_sum = torch.tensor([0.0], dtype=torch.float32, device=pred.device)
     inconsistencies_sum = torch.tensor([0.0], dtype=torch.float32, device=pred.device)
 
@@ -237,7 +237,7 @@ def inconsistency_loss(pred, target, consistency_function):
         if consistency_function == 'argmax_pred':
             pred1 = pred[t]
             pred2 = pred[t + 1]
-            diff_pred_valid = (pred1 != pred2).to(output.dtype)
+            diff_pred_valid = (pred1 != pred2)
         elif consistency_function == 'abs_diff':
             diff_pred_valid = torch.abs(pred[t] - pred[t + 1]).sum(dim=1)
         elif consistency_function == 'sq_diff':

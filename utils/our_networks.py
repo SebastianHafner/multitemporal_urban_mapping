@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.autograd import Variable
 
 from collections import OrderedDict
 from utils import network_building_blocks as blocks
@@ -22,11 +23,15 @@ class UNet(nn.Module):
         self.decoder = Decoder(cfg)
         self.outc = blocks.OutConv(topology[0], n_classes)
 
-    def forward(self, x: torch.Tensor) -> tuple:
-        x = self.inc(x)
-        features = self.encoder(x)
-        x = self.decoder(features)
-        out = self.outc(x)
+    def forward(self, x: torch.Tensor) -> torch.tensor:
+        # x (T, BS, C, H, W)
+        T, BS, _, H, W = x.size()
+        out = Variable(torch.zeros(T, BS, 1, H, W)).to(device)
+        for t in range(T):
+            x1 = self.inc(x[t])
+            x2 = self.encoder(x1)
+            x3 = self.decoder(x2)
+            out[t] = self.outc(x3)
         return out
 
 
