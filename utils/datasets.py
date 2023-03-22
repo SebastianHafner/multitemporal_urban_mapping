@@ -136,7 +136,7 @@ class TrainDataset(AbstractSpaceNet7Dataset):
 
 class EvalDataset(AbstractSpaceNet7Dataset):
 
-    def __init__(self, cfg: experiment_manager.CfgNode, run_type: str, tiling: int = None):
+    def __init__(self, cfg: experiment_manager.CfgNode, run_type: str, tiling: int = None, aoi_id: str = None):
         super().__init__(cfg)
 
         self.T = cfg.DATALOADER.EVAL_TIMESERIES_LENGTH
@@ -147,30 +147,32 @@ class EvalDataset(AbstractSpaceNet7Dataset):
 
         self.metadata = geofiles.load_json(self.root_path / f'metadata_siamesessl.json')
 
-        if run_type == 'train':
-            self.aoi_ids = list(cfg.DATASET.TRAIN_IDS)
-        elif run_type == 'val':
-            self.aoi_ids = list(cfg.DATASET.VAL_IDS)
-        elif run_type == 'test':
-            self.aoi_ids = list(cfg.DATASET.TEST_IDS)
+        if aoi_id is None:
+            if run_type == 'train':
+                self.aoi_ids = list(cfg.DATASET.TRAIN_IDS)
+            elif run_type == 'val':
+                self.aoi_ids = list(cfg.DATASET.VAL_IDS)
+            elif run_type == 'test':
+                self.aoi_ids = list(cfg.DATASET.TEST_IDS)
+            else:
+                raise Exception('unkown run type!')
         else:
-            raise Exception('unkown run type!')
+            self.aoi_ids = [aoi_id]
 
         if tiling is None:
             self.tiling = 1024
-            self.samples = [(aoi_id, (0, 0)) for aoi_id in self.aoi_ids]
-        else:
-            self.samples = []
-            for aoi_id in self.aoi_ids:
-                for i in range(0, self.tiling, 1024):
-                    for j in range(0, self.tiling, 1024):
-                        self.samples.append((aoi_id, (i, j)))
+
+        self.samples = []
+        for aoi_id in self.aoi_ids:
+            for i in range(0, 1024, self.tiling):
+                for j in range(0, 1024, self.tiling):
+                    self.samples.append((aoi_id, (i, j)))
 
         manager = multiprocessing.Manager()
         self.aoi_ids = manager.list(self.aoi_ids)
         self.metadata = manager.dict(self.metadata)
 
-        self.length = len(self.aoi_ids)
+        self.length = len(self.samples)
 
     def __getitem__(self, index):
 
