@@ -1,4 +1,4 @@
-_BASE_: "lunet.yaml"
+_BASE_: "unet_gamma.yaml"
 DEBUG: True
 
 TRAINER:

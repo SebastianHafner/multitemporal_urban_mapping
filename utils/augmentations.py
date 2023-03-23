@@ -89,8 +89,9 @@ class GammaCorrection(object):
 
     def __call__(self, args):
         images, labels = args
-        gamma = np.random.uniform(self.min_gamma, self.max_gamma, images.shape[-1])
-        images = np.clip(np.power(images, gamma[np.newaxis, np.newaxis, np.newaxis, :]), 0, 1).astype(np.float32)
+        for t in range(images.shape[0]):
+            gamma = np.random.uniform(self.min_gamma, self.max_gamma, images.shape[-1])
+            images[t] = np.clip(np.power(images[t], gamma[np.newaxis, np.newaxis, :]), 0, 1).astype(np.float32)
         return images, labels
 
 
