@@ -195,7 +195,6 @@ def qualitative_tc_gif_colored(cfg: experiment_manager.CfgNode, run_type: str = 
 
         clip = ImageSequenceClip(list(frames), fps=fps)
         clip.write_gif(str(gif_file), fps=fps)
-        break
 
 
 def quantitative_temporal_consistency_assessment(cfg: experiment_manager.CfgNode, run_type: str = 'test'):

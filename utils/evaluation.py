@@ -11,6 +11,7 @@ class TCMeasurer(object):
         self.threshold = threshold
         self.unsupervised_tc_values = []
         self.supervised_tc_values = []
+        self.supervised_tc_urban_values = []
 
         self.eps = 10e-05
 
@@ -26,6 +27,8 @@ class TCMeasurer(object):
             self.unsupervised_tc_values.append(unsup_tc.cpu().item())
             sup_tc = self.supervised_tc(y[:, b], y_hat[:, b])
             self.supervised_tc_values.append(sup_tc.cpu().item())
+            sup_tc_urban = self.supervised_tc_urban(y[:, b], y_hat[:, b])
+            self.supervised_tc_urban_values.append(sup_tc_urban.cpu().item())
 
     def _iou(self, y: torch.Tensor, y_hat: torch.Tensor) -> torch.tensor:
         tp = torch.sum(y & y_hat).float()
@@ -47,11 +50,24 @@ class TCMeasurer(object):
         T = y.size()[0]
         consistency = torch.empty((T - 1))
         for t in range(1, T):
-            diff_y_hat = y[t - 1] != y_hat[t]
+            diff_y_hat = y_hat[t - 1] != y_hat[t]
             diff_y = y[t - 1] != y[t]
+            # inconsistencies: predictions of two consecutive timestamps disagree and ground truth is consistent
             inconsistencies = diff_y_hat & torch.logical_not(diff_y)
+            # ratio of inconsistencies to consistent pixels in the ground truth
             consistency[t - 1] = 1 - (torch.sum(inconsistencies) / (torch.sum(torch.logical_not(diff_y))))
         return torch.mean(consistency)
+
+    def supervised_tc_urban(self, y: torch.Tensor, y_hat: torch.Tensor) -> torch.tensor:
+        # y and y_hat (T, H, W)
+        T = y.size()[0]
+        consistency_urban = torch.empty((T - 1))
+        for t in range(1, T):
+            diff_urban_y_hat = (y_hat[t - 1] == 1) != (y_hat[t] == 1)
+            diff_urban_y = (y[t - 1] == 1) != (y[t] == 1)
+            inconsistencies_urban = diff_urban_y_hat & torch.logical_not(diff_urban_y)
+            consistency_urban[t - 1] = 1 - (torch.sum(inconsistencies_urban) / (torch.sum(torch.logical_not(diff_urban_y))))
+        return torch.mean(consistency_urban)
 
     def is_empty(self):
         assert(len(self.unsupervised_tc_values) == len(self.supervised_tc_values))
@@ -60,6 +76,7 @@ class TCMeasurer(object):
     def reset(self):
         self.unsupervised_tc_values = []
         self.supervised_tc_values = []
+        self.supervised_tc_urban_values = []
 
 
 class Measurer(object):
@@ -141,12 +158,14 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
 
     f1 = measurer.f1()
     sup_tc = np.mean(measurer_tc.supervised_tc_values)
+    sup_tc_urban = np.mean(measurer_tc.supervised_tc_urban_values)
     unsup_tc = np.mean(measurer_tc.unsupervised_tc_values)
 
     wandb.log({
         f'{run_type} f1': f1,
         f'{run_type} unsup_tc': unsup_tc,
         f'{run_type} sup_tc': sup_tc,
+        f'{run_type} sup_tc_urban': sup_tc_urban,
         'step': step, 'epoch': epoch,
     })
 

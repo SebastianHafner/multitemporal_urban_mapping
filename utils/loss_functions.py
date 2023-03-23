@@ -238,4 +238,4 @@ def inconsistency_loss(logits, target, consistency_function, threshold: float = 
         inconsistencies_sum += inconsistencies.sum()
         valid_mask_sum += cons_gt.sum()
 
-    return inconsistencies_sum
+    return inconsistencies_sum / valid_mask_sum
