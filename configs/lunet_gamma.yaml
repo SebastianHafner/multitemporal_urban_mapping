@@ -1,0 +1,7 @@
+_BASE_: "base.yaml"
+
+MODEL:
+  TYPE: 'lunet'
+
+AUGMENTATION:
+  GAMMA_CORRECTION: True
