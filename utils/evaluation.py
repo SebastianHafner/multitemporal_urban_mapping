@@ -1,7 +1,7 @@
 import torch
 from torch.utils import data as torch_data
 import wandb
-from utils import datasets
+from utils import datasets, spacenet7_helpers
 import numpy as np
 
 
@@ -155,6 +155,64 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
 
         measurer.add_sample(y, y_hat.detach())
         measurer_tc.add_sample(y, y_hat.detach())
+
+    f1 = measurer.f1()
+    sup_tc = np.mean(measurer_tc.supervised_tc_values)
+    sup_tc_urban = np.mean(measurer_tc.supervised_tc_urban_values)
+    unsup_tc = np.mean(measurer_tc.unsupervised_tc_values)
+
+    wandb.log({
+        f'{run_type} f1': f1,
+        f'{run_type} unsup_tc': unsup_tc,
+        f'{run_type} sup_tc': sup_tc,
+        f'{run_type} sup_tc_urban': sup_tc_urban,
+        'step': step, 'epoch': epoch,
+    })
+
+    return f1
+
+
+def model_evaluation_transformer(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
+
+    net.to(device)
+    net.eval()
+
+    measurer = Measurer()
+    measurer_tc = TCMeasurer()
+
+    aoi_ids = spacenet7_helpers.get_aoi_ids(cfg, run_type)
+    for aoi_id in aoi_ids:
+        print(aoi_id)
+        ds = datasets.EvalTransformerDataset(cfg, run_type, tiling=cfg.AUGMENTATION.CROP_SIZE, aoi_id=aoi_id)
+        dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE, num_workers=0, shuffle=False,
+                                           drop_last=False)
+        arr_y = torch.empty((cfg.DATALOADER.EVAL_TIMESERIES_LENGTH, 1, 1, 1024, 1024)).to(device)
+        arr_y_hat = torch.empty((cfg.DATALOADER.EVAL_TIMESERIES_LENGTH, 1, 1, 1024, 1024)).to(device)
+        offset = cfg.AUGMENTATION.CROP_SIZE // 2
+
+        for step, item in enumerate(dataloader):
+            # => TimeStep, BatchSize, ...
+            x = item['x'].to(device).transpose(0, 1)
+
+            with torch.no_grad():
+                logits = net(x)
+
+            y = item['y'].to(device).transpose(0, 1)
+
+            y = y[:, :, :, offset, offset]
+            y_hat = torch.sigmoid(logits)
+            print(step)
+
+        #     # loop over batch
+        #     for b in range(logits.size()[1]):
+        #         i, j = item['i'][b].item(), item['j'][b].item()
+        #         arr_y[:, 0, 0, i, j] = y[:, b, 0]
+        #         arr_y_hat[:, 0, 0, i, j] = y_hat[:, b, 0]
+        #
+        # arr_y = arr_y[:, :, :, offset: -offset, offset: -offset]
+        # arr_y_hat = arr_y_hat[:, :, :, offset: -offset, offset: -offset]
+        # measurer.add_sample(arr_y, arr_y_hat.detach())
+        # measurer_tc.add_sample(arr_y, arr_y_hat.detach())
 
     f1 = measurer.f1()
     sup_tc = np.mean(measurer_tc.supervised_tc_values)

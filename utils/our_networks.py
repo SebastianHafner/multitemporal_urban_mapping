@@ -26,6 +26,7 @@ class UNet(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.tensor:
         # x (T, BS, C, H, W)
         T, BS, _, H, W = x.size()
+        # TODO: here convert temporal dimension to batch
         out = Variable(torch.zeros(T, BS, 1, H, W)).to(device)
         for t in range(T):
             out[t] = self.outc(self.decoder(self.encoder(self.inc(x[t]))))

@@ -1,0 +1,7 @@
+_BASE_: "base.yaml"
+
+MODEL:
+  TYPE: 'segmenter'
+
+AUGMENTATION:
+  CROP_SIZE: 256

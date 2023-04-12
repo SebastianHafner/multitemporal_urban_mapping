@@ -20,7 +20,7 @@ def run_training(cfg: experiment_manager.CfgNode):
     criterion = loss_functions.get_criterion(cfg.MODEL.LOSS_TYPE)
 
     # reset the generators
-    dataset = datasets.TrainDataset(cfg=cfg, run_type='train')
+    dataset = datasets.TrainTransformerDataset(cfg=cfg, run_type='train')
     print(dataset)
 
     dataloader_kwargs = {
@@ -44,6 +44,8 @@ def run_training(cfg: experiment_manager.CfgNode):
     trigger_times = 0
     stop_training = False
 
+    _ = evaluation.model_evaluation_transformer(net, cfg, device, 'train', epoch_float, global_step)
+
     for epoch in range(1, epochs + 1):
         print(f'Starting epoch {epoch}/{epochs}.')
 
@@ -60,6 +62,7 @@ def run_training(cfg: experiment_manager.CfgNode):
             logits = net(x)
 
             y = batch['y'].to(device).transpose(0, 1)
+            y = y[:, :, :, cfg.AUGMENTATION.CROP_SIZE // 2, cfg.AUGMENTATION.CROP_SIZE // 2]
             loss = criterion(logits, y)
             loss.backward()
             optimizer.step()
@@ -87,8 +90,8 @@ def run_training(cfg: experiment_manager.CfgNode):
         assert (epoch == epoch_float)
         print(f'epoch float {epoch_float} (step {global_step}) - epoch {epoch}')
         # evaluation at the end of an epoch
-        _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
-        f1_val = evaluation.model_evaluation(net, cfg, device, 'val', epoch_float, global_step)
+        _ = evaluation.model_evaluation_transformer(net, cfg, device, 'train', epoch_float, global_step)
+        f1_val = evaluation.model_evaluation_transformer(net, cfg, device, 'val', epoch_float, global_step)
 
         if f1_val > best_f1_val:
             best_f1_val = f1_val
@@ -103,8 +106,8 @@ def run_training(cfg: experiment_manager.CfgNode):
         if stop_training:
             break
 
-    net, *_ = network_factory.load_checkpoint(cfg, device)
-    _ = evaluation.model_evaluation(net, cfg, device, 'test', epoch_float, global_step)
+    net, *_ = networks.load_checkpoint(cfg, device)
+    _ = evaluation.model_evaluation_transformer(net, cfg, device, 'test', epoch_float, global_step)
 
 
 if __name__ == '__main__':

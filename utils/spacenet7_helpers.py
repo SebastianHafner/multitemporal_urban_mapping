@@ -1,6 +1,6 @@
 from pathlib import Path
 import numpy as np
-from utils import geofiles
+from utils import geofiles, experiment_manager
 
 
 def file2date(file: Path) -> tuple:
@@ -102,6 +102,19 @@ def print_test_aoi_ids(spacenet7_path: str):
     print('--test--')
     for aoi_id in aoi_ids:
         print(f"'{aoi_id}',")
+
+
+def get_aoi_ids(cfg: experiment_manager.CfgNode, run_type: str) -> list:
+    if run_type == 'train':
+        aoi_ids = list(cfg.DATASET.TRAIN_IDS)
+    elif run_type == 'val':
+        aoi_ids = list(cfg.DATASET.VAL_IDS)
+    elif run_type == 'test':
+        aoi_ids = list(cfg.DATASET.TEST_IDS)
+    else:
+        raise Exception('unkown run type!')
+    return aoi_ids
+
 
 if __name__ == '__main__':
     print_training_validation_split('C:/Users/shafner/datasets/spacenet7')
