@@ -558,7 +558,6 @@ class SegFormer(nn.Module):
             norm_layer=partial(nn.LayerNorm, eps=1e-6), depths=self.depths, sr_ratios=[8, 4, 2, 1]
         )
 
-        # Transformer Decoder
         self.decoder = DecoderTransformer(input_transform='multiple_select', in_index=[0, 1, 2, 3], align_corners=False,
             in_channels=self.embed_dims, embedding_dim=self.embedding_dim, output_nc=output_nc,
             feature_strides=[2, 4, 8, 16]
