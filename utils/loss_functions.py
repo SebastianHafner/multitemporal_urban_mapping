@@ -9,11 +9,13 @@ import scipy.ndimage as sp_img
 def get_criterion(loss_type, negative_weight: float = 1, positive_weight: float = 1):
     if loss_type == 'BCEWithLogitsLoss':
         criterion = nn.BCEWithLogitsLoss()
-    elif loss_type == 'CrossEntropyLoss':
+    elif loss_type == 'WeightedCrossEntropyLoss':
         balance_weight = [negative_weight, positive_weight]
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         balance_weight = torch.tensor(balance_weight).float().to(device)
         criterion = nn.CrossEntropyLoss(weight=balance_weight)
+    elif loss_type == 'CrossEntropyLoss':
+        criterion = nn.CrossEntropyLoss()
     elif loss_type == 'SoftDiceLoss':
         criterion = soft_dice_loss
     elif loss_type == 'SoftDiceSquaredSumLoss':

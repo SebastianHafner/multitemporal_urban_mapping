@@ -151,7 +151,10 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
             logits = net(x)
 
         y = item['y'].to(device).transpose(0, 1)
-        y_hat = torch.sigmoid(logits)
+        if cfg.MODEL.LOSS_TYPE == 'CrossEntropyLoss':
+            y_hat = torch.argmax(torch.softmax(logits, dim=2), dim=2, keepdim=True)
+        else:
+            y_hat = torch.sigmoid(logits)
 
         measurer.add_sample(y, y_hat.detach())
         measurer_tc.add_sample(y, y_hat.detach())
