@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from pathlib import Path
-from utils import experiment_manager, our_networks, lunet, espnets, transformers, segmenter, segformer
+from utils import experiment_manager, our_networks, lunet, espnets, transformers, segformer
+from utils.segmenter_model import factory
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -18,7 +19,7 @@ def create_network(cfg):
     elif cfg.MODEL.TYPE == 'transformer':
         net = transformers.TransformerModel(cfg)
     elif cfg.MODEL.TYPE == 'segmenter':
-        net = segmenter.Segmenter(cfg)
+        net = factory.create_segmenter(cfg)
     elif cfg.MODEL.TYPE == 'segformer':
         net = segformer.SegFormer(cfg)
     else:

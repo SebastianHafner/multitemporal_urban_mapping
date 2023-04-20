@@ -1,4 +1,4 @@
-_BASE_: "segformer.yaml"
+_BASE_: "segmenter.yaml"
 DEBUG: True
 
 TRAINER:
