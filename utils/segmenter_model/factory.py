@@ -18,30 +18,8 @@ import utils.segmenter_model.torch as ptu
 from utils.experiment_manager import CfgNode
 
 
-@register_model
-def vit_base_patch8_384(pretrained=False, **kwargs):
-    """ViT-Base model (ViT-B/16) from original paper (https://arxiv.org/abs/2010.11929).
-    ImageNet-1k weights fine-tuned from in21k @ 384x384, source https://github.com/google-research/vision_transformer.
-    """
-    model_kwargs = dict(patch_size=8, embed_dim=768, depth=12, num_heads=12, **kwargs)
-    model = _create_vision_transformer(
-        "vit_base_patch8_384",
-        pretrained=pretrained,
-        default_cfg=dict(
-            url="",
-            input_size=(3, 384, 384),
-            mean=(0.5, 0.5, 0.5),
-            std=(0.5, 0.5, 0.5),
-            num_classes=1000,
-        ),
-        **model_kwargs,
-    )
-    return model
-
-
 def create_vit(cfg: CfgNode):
     backbone = 'vit_tiny_patch16_384'
-    normalization = 'vit'
 
     if backbone in default_cfgs:
         default_cfg = default_cfgs[backbone]
@@ -70,21 +48,19 @@ def create_vit(cfg: CfgNode):
     return model
 
 
-def create_decoder(encoder, decoder_cfg):
-    decoder_cfg = decoder_cfg.copy()
-    name = decoder_cfg.pop("name")
-    decoder_cfg["d_encoder"] = encoder.d_model
-    decoder_cfg["patch_size"] = encoder.patch_size
-
+def create_decoder(encoder, cfg: CfgNode):
+    name = 'linear'
     if "linear" in name:
-        decoder = DecoderLinear(**decoder_cfg)
+        decoder = DecoderLinear(n_cls=cfg.MODEL.OUT_CHANNELS, patch_size=encoder.patch_size, d_encoder=encoder.d_model)
     elif name == "mask_transformer":
+        decoder_cfg = {'drop_path_rate': 0.0, 'dropout': 0.1, 'n_layers': 2}
         dim = encoder.d_model
         n_heads = dim // 64
         decoder_cfg["n_heads"] = n_heads
         decoder_cfg["d_model"] = dim
         decoder_cfg["d_ff"] = 4 * dim
-        decoder = MaskTransformer(**decoder_cfg)
+        decoder = MaskTransformer(n_cls=cfg.MODEL.OUT_CHANNELS, patch_size=encoder.patch_size,
+                                  d_encoder=encoder.d_model, **decoder_cfg)
     else:
         raise ValueError(f"Unknown decoder: {name}")
     return decoder
@@ -92,9 +68,7 @@ def create_decoder(encoder, decoder_cfg):
 
 def create_segmenter(cfg: CfgNode):
     encoder = create_vit(cfg)
-    decoder_cfg = {'drop_path_rate': 0.0, 'dropout': 0.1, 'n_layers': 2, 'name': 'mask_transformer',
-                   'n_cls': cfg.MODEL.OUT_CHANNELS}
-    decoder = create_decoder(encoder, decoder_cfg)
+    decoder = create_decoder(encoder, cfg)
     model = Segmenter(encoder, decoder, n_cls=cfg.MODEL.OUT_CHANNELS)
     return model
 

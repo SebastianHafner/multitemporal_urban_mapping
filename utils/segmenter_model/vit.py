@@ -25,14 +25,11 @@ class PatchEmbedding(nn.Module):
         self.grid_size = image_size[0] // patch_size, image_size[1] // patch_size
         self.num_patches = self.grid_size[0] * self.grid_size[1]
         self.patch_size = patch_size
-
-        self.proj = nn.Conv2d(
-            channels, embed_dim, kernel_size=patch_size, stride=patch_size
-        )
+        self.proj = nn.Conv2d(channels, embed_dim, kernel_size=patch_size, stride=patch_size)
 
     def forward(self, im):
-        B, C, H, W = im.shape
-        x = self.proj(im).flatten(2).transpose(1, 2)
+        x = self.proj(im)
+        x = x.flatten(2).transpose(1, 2)
         return x
 
 
@@ -68,20 +65,14 @@ class VisionTransformer(nn.Module):
         self.distilled = distilled
         if self.distilled:
             self.dist_token = nn.Parameter(torch.zeros(1, 1, d_model))
-            self.pos_embed = nn.Parameter(
-                torch.randn(1, self.patch_embed.num_patches + 2, d_model)
-            )
+            self.pos_embed = nn.Parameter(torch.randn(1, self.patch_embed.num_patches + 2, d_model))
             self.head_dist = nn.Linear(d_model, n_cls)
         else:
-            self.pos_embed = nn.Parameter(
-                torch.randn(1, self.patch_embed.num_patches + 1, d_model)
-            )
+            self.pos_embed = nn.Parameter(torch.randn(1, self.patch_embed.num_patches + 1, d_model))
 
         # transformer blocks
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, n_layers)]
-        self.blocks = nn.ModuleList(
-            [Block(d_model, n_heads, d_ff, dropout, dpr[i]) for i in range(n_layers)]
-        )
+        self.blocks = nn.ModuleList([Block(d_model, n_heads, d_ff, dropout, dpr[i]) for i in range(n_layers)])
 
         # output head
         self.norm = nn.LayerNorm(d_model)
@@ -107,7 +98,7 @@ class VisionTransformer(nn.Module):
         B, _, H, W = im.shape
         PS = self.patch_size
 
-        x = self.patch_embed(im)
+        x = self.patch_embed(im)  # (B, ?, d_model)
         cls_tokens = self.cls_token.expand(B, -1, -1)
         if self.distilled:
             dist_tokens = self.dist_token.expand(B, -1, -1)
@@ -118,12 +109,7 @@ class VisionTransformer(nn.Module):
         pos_embed = self.pos_embed
         num_extra_tokens = 1 + self.distilled
         if x.shape[1] != pos_embed.shape[1]:
-            pos_embed = resize_pos_embed(
-                pos_embed,
-                self.patch_embed.grid_size,
-                (H // PS, W // PS),
-                num_extra_tokens,
-            )
+            pos_embed = resize_pos_embed(pos_embed, self.patch_embed.grid_size, (H // PS, W // PS), num_extra_tokens)
         x = x + pos_embed
         x = self.dropout(x)
 
