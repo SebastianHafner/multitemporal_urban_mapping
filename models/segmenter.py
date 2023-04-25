@@ -53,7 +53,7 @@ class Segmenter(nn.Module):
         tokens = self.patch_embedding(x)
 
         # adding positional encoding
-        out = tokens + self.positional_encodings.repeat(B, 1, 1)
+        out = tokens + self.positional_encodings.repeat(T * B, 1, 1)
 
         # transformer encoder
         out = self.encoder(out)
