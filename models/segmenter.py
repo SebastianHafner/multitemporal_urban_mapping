@@ -20,7 +20,7 @@ class Segmenter(nn.Module):
         self.cfg = cfg
         self.c = cfg.MODEL.IN_CHANNELS
         self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
-        self.patch_size = cfg.TRANSFORMER_PARAMS.PATCH_SIZE
+        self.patch_size = cfg.MODEL.TRANSFORMER_PARAMS.PATCH_SIZE
         self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
         self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
         self.d_model = cfg.MODEL.TRANSFORMER_PARAMS.D_MODEL

@@ -7,7 +7,7 @@ import einops
 
 from utils.experiment_manager import CfgNode
 
-from models.embeddings import PatchEmbedding
+from models.embeddings import TemporalPatchEmbedding
 from models.encodings import get_positional_encodings
 
 
@@ -20,7 +20,7 @@ class TempSegmenter(nn.Module):
         self.cfg = cfg
         self.c = cfg.MODEL.IN_CHANNELS
         self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
-        self.patch_size = cfg.TRANSFORMER_PARAMS.PATCH_SIZE
+        self.patch_size = cfg.MODEL.TRANSFORMER_PARAMS.PATCH_SIZE
         self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
         self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
         self.d_model = cfg.MODEL.TRANSFORMER_PARAMS.D_MODEL
@@ -30,13 +30,13 @@ class TempSegmenter(nn.Module):
 
         # input and n patches
         assert (self.h % self.patch_size == 0)
-        self.n_patches = self.h // self.patch_size
+        self.n_patches = cfg.DATALOADER.TIMESERIES_LENGTH
 
         # linear mapper
-        self.patch_embedding = PatchEmbedding(self.c, self.patch_size, self.d_model)
+        self.patch_embedding = TemporalPatchEmbedding(self.c, self.patch_size, self.d_model)
 
         # positional embedding
-        self.register_buffer('positional_encodings', get_positional_encodings(self.n_patches ** 2, self.d_model),
+        self.register_buffer('positional_encodings', get_positional_encodings(self.n_patches, self.d_model),
                              persistent=False)
 
         # transformer encoder
@@ -50,13 +50,14 @@ class TempSegmenter(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         T, B, _, H, W = x.size()
-        x = einops.rearrange(x, 't b c h w -> (t b) c h w')
 
-        # tile each image and embed the resulting patches
+        # patches = einops.rearrange(x, 't b c (h s1) (w s2) -> (b h w) t (s1 s2 c)', s1=self.patch_size,
+        #                            s2=self.patch_size)
+
         tokens = self.patch_embedding(x)
 
         # adding positional encoding
-        out = tokens + self.positional_encodings.repeat(T * B, 1, 1)
+        out = tokens + self.positional_encodings.repeat(tokens.size(0), 1, 1)
 
         # transformer encoder
         out = self.encoder(out)

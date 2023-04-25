@@ -18,6 +18,20 @@ class PatchEmbedding(nn.Module):
         return x
 
 
+class TemporalPatchEmbedding(nn.Module):
+    def __init__(self, in_channels: int, patch_size: int, emb_size: int):
+        self.patch_size = patch_size
+        super().__init__()
+        self.projection = nn.Sequential(
+            Rearrange('t b c (h s1) (w s2) -> (b h w) t (s1 s2 c)', s1=patch_size, s2=patch_size),
+            nn.Linear(patch_size * patch_size * in_channels, emb_size),
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.projection(x)
+        return x
+
+
 def get_positional_encodings(sequence_length, d):
     result = torch.ones(sequence_length, d)
     for i in range(sequence_length):
