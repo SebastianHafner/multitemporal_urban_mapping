@@ -11,22 +11,20 @@ from models.embeddings import PatchEmbedding
 from models.encodings import get_positional_encodings
 
 
-class Segmenter(nn.Module):
+class TempSegmenter(nn.Module):
     def __init__(self, cfg: CfgNode):
         # Super constructor
-        super(Segmenter, self).__init__()
+        super(TempSegmenter, self).__init__()
 
         # attributes
         self.cfg = cfg
         self.c = cfg.MODEL.IN_CHANNELS
         self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
         self.patch_size = 8
-        self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
-        self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
-        self.d_model = cfg.MODEL.TRANSFORMER_PARAMS.N_MODEL
+        self.n_layers = 2
+        self.n_heads = 3
+        self.d_model = 192
         self.d_out = cfg.MODEL.OUT_CHANNELS
-        self.d_hid = self.d_model * 4
-        self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
 
         # input and n patches
         assert (self.h % self.patch_size == 0)
@@ -41,8 +39,8 @@ class Segmenter(nn.Module):
 
         # transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=self.n_heads,
-                                                   dim_feedforward=self.d_hid, batch_first=True,
-                                                   activation=self.activation)
+                                                   dim_feedforward=4 * self.d_model, batch_first=True,
+                                                   activation='gelu')
         self.encoder = nn.TransformerEncoder(encoder_layer, self.n_layers)
 
         # decoding

@@ -1,0 +1,6 @@
+_BASE_: "base.yaml"
+
+MODEL:
+  TYPE: 'segmenter'
+  TRANSFORMER_PARAMS:
+    PATCH_SIZE: 4

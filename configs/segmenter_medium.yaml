@@ -1,0 +1,8 @@
+_BASE_: "base.yaml"
+
+MODEL:
+  TYPE: 'segmenter'
+  TRANSFORMER_PARAMS:
+    N_LAYERS: 4
+    N_HEADS: 6
+    D_MODEL: 384

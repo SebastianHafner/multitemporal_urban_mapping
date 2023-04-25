@@ -16,7 +16,7 @@ class UNet(nn.Module):
 
         n_channels = cfg.MODEL.IN_CHANNELS
         n_classes = cfg.MODEL.OUT_CHANNELS
-        topology = [64, 128, ]
+        topology = cfg.MODEL.TYPOLOGY
 
         self.inc = blocks.InConv(n_channels, topology[0], blocks.DoubleConv)
         self.encoder = Encoder(cfg)
