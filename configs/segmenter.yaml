@@ -2,5 +2,3 @@ _BASE_: "base.yaml"
 
 MODEL:
   TYPE: 'segmenter'
-  OUT_CHANNELS: 2
-  LOSS_TYPE: 'CrossEntropyLoss'

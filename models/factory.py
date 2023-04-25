@@ -1,25 +1,21 @@
 import torch
 import torch.nn as nn
 from pathlib import Path
-from utils import experiment_manager, our_networks, lunet, espnets, transformers, segformer
-from utils.segmenter_model import factory
+from utils.experiment_manager import CfgNode
+from models import unet, lunet, transformers, segformer, segmenter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def create_network(cfg):
     if cfg.MODEL.TYPE == 'unet':
-        net = our_networks.UNet(cfg)
+        net = unet.UNet(cfg)
     elif cfg.MODEL.TYPE == 'lunet':
         net = lunet.LUNet(cfg)
-    elif cfg.MODEL.TYPE == 'espnet':
-        net = espnets.ESPNet(cfg)
-    elif cfg.MODEL.TYPE == 'espnetl1b':
-        net = espnets.ESPNet_L1b(cfg)
     elif cfg.MODEL.TYPE == 'transformer':
         net = transformers.TransformerModel(cfg)
     elif cfg.MODEL.TYPE == 'segmenter':
-        net = factory.create_segmenter(cfg)
+        net = segmenter.Segmenter(cfg)
     elif cfg.MODEL.TYPE == 'segformer':
         net = segformer.SegFormer(cfg)
     else:
@@ -27,7 +23,7 @@ def create_network(cfg):
     return nn.DataParallel(net)
 
 
-def save_checkpoint(network, optimizer, epoch: float, cfg: experiment_manager.CfgNode):
+def save_checkpoint(network, optimizer, epoch: float, cfg: CfgNode):
     save_file = Path(cfg.PATHS.OUTPUT) / 'networks' / f'{cfg.NAME}.pt'
     save_file.parent.mkdir(exist_ok=True)
     checkpoint = {
@@ -38,7 +34,7 @@ def save_checkpoint(network, optimizer, epoch: float, cfg: experiment_manager.Cf
     torch.save(checkpoint, save_file)
 
 
-def load_checkpoint(cfg: experiment_manager.CfgNode, device: torch.device):
+def load_checkpoint(cfg: CfgNode, device: torch.device):
     net = create_network(cfg)
     net.to(device)
 

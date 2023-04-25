@@ -78,7 +78,7 @@ class TrainDataset(AbstractSpaceNet7Dataset):
                  disable_multiplier: bool = False):
         super().__init__(cfg)
 
-        self.T = cfg.DATALOADER.TRAIN_TIMESERIES_LENGTH
+        self.T = cfg.DATALOADER.TIMESERIES_LENGTH
 
         # handling transformations of data
         self.no_augmentations = no_augmentations

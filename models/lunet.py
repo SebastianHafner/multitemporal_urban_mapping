@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-from utils import network_building_blocks as blocks
+from models import building_blocks as blocks
 from utils import experiment_manager
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

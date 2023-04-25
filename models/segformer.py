@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 
 from functools import partial
-from utils.ChangeFormerBaseNetworks import *
+from models.ChangeFormerBaseNetworks import *
 import torch.nn.functional as F
 
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_

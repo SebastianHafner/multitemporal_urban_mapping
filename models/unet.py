@@ -1,9 +1,9 @@
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
-
+import einops
 from collections import OrderedDict
-from utils import network_building_blocks as blocks
+from models import building_blocks as blocks
 from utils import experiment_manager
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -25,10 +25,10 @@ class UNet(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.tensor:
         # x (TS, B, C, H, W)
-        TS, B, _, H, W = x.size()
-        x = x.flatten(start_dim=0, end_dim=1)
+        T, B, _, H, W = x.size()
+        x = einops.rearrange(x, 't b c h w -> (t b) c h w')
         out = self.outc(self.decoder(self.encoder(self.inc(x))))
-        out = out.unflatten(dim=0, sizes=(TS, B))
+        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=T)
         return out
 
 
