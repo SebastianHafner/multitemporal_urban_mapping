@@ -10,34 +10,22 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class UNet(nn.Module):
-    def __init__(self, cfg: experiment_manager.CfgNode):
+    def __init__(self, n_channels: int, n_classes: int, topology: tuple = (64, 128,)):
         super(UNet, self).__init__()
-        self.cfg = cfg
-
-        n_channels = cfg.MODEL.IN_CHANNELS
-        n_classes = cfg.MODEL.OUT_CHANNELS
-        topology = [64, 128, ]
 
         self.inc = blocks.InConv(n_channels, topology[0], blocks.DoubleConv)
-        self.encoder = Encoder(cfg)
-        self.decoder = Decoder(cfg)
+        self.encoder = Encoder(topology)
+        self.decoder = Decoder(topology)
         self.outc = blocks.OutConv(topology[0], n_classes)
 
     def forward(self, x: torch.Tensor) -> torch.tensor:
-        # x (TS, B, C, H, W)
-        TS, B, _, H, W = x.size()
-        x = x.flatten(start_dim=0, end_dim=1)
         out = self.outc(self.decoder(self.encoder(self.inc(x))))
-        out = out.unflatten(dim=0, sizes=(TS, B))
         return out
 
 
 class Encoder(nn.Module):
-    def __init__(self, cfg: experiment_manager.CfgNode):
+    def __init__(self, topology: tuple):
         super(Encoder, self).__init__()
-
-        self.cfg = cfg
-        topology = cfg.MODEL.TOPOLOGY
 
         # Variable scale
         down_topo = topology
@@ -66,11 +54,8 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, cfg: experiment_manager.CfgNode):
+    def __init__(self, topology: tuple):
         super(Decoder, self).__init__()
-        self.cfg = cfg
-
-        topology = cfg.MODEL.TOPOLOGY
 
         # Variable scale
         n_layers = len(topology)
