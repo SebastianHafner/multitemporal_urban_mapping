@@ -20,11 +20,13 @@ class TempSegmenter(nn.Module):
         self.cfg = cfg
         self.c = cfg.MODEL.IN_CHANNELS
         self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
-        self.patch_size = 8
-        self.n_layers = 2
-        self.n_heads = 3
-        self.d_model = 192
+        self.patch_size = cfg.TRANSFORMER_PARAMS.PATCH_SIZE
+        self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
+        self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
+        self.d_model = cfg.MODEL.TRANSFORMER_PARAMS.D_MODEL
         self.d_out = cfg.MODEL.OUT_CHANNELS
+        self.d_hid = self.d_model * 4
+        self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
 
         # input and n patches
         assert (self.h % self.patch_size == 0)
