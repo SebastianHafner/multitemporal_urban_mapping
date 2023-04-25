@@ -23,7 +23,7 @@ class Segmenter(nn.Module):
         self.patch_size = 8
         self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
         self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
-        self.d_model = cfg.MODEL.TRANSFORMER_PARAMS.N_MODEL
+        self.d_model = cfg.MODEL.TRANSFORMER_PARAMS.D_MODEL
         self.d_out = cfg.MODEL.OUT_CHANNELS
         self.d_hid = self.d_model * 4
         self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION

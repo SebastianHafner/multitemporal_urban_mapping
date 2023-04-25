@@ -17,7 +17,7 @@ def create_network(cfg):
     elif cfg.MODEL.TYPE == 'segmenter':
         net = segmenter.Segmenter(cfg)
     elif cfg.MODEL.TYPE == 'tempsegmenter':
-        net = segmenter.TempSegmenter(cfg)
+        net = tempsegmenter.TempSegmenter(cfg)
     elif cfg.MODEL.TYPE == 'segformer':
         net = segformer.SegFormer(cfg)
     else:
