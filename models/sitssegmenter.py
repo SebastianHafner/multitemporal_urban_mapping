@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.models as models
 
 from typing import Tuple
 import einops
@@ -11,10 +12,10 @@ from models.embeddings import TemporalPatchEmbedding
 from models.encodings import get_positional_encodings
 
 
-class TempSegmenter(nn.Module):
+class SITSSegmenter(nn.Module):
     def __init__(self, cfg: CfgNode):
         # Super constructor
-        super(TempSegmenter, self).__init__()
+        super(SITSSegmenter, self).__init__()
 
         # attributes
         self.cfg = cfg
@@ -27,6 +28,10 @@ class TempSegmenter(nn.Module):
         self.d_out = cfg.MODEL.OUT_CHANNELS
         self.d_hid = self.d_model * 4
         self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
+
+        resnet = models.resnet18(pretrained=False)
+        modules = list(resnet.children())[:-1]
+        resnet = nn.Sequential(*modules)
 
         # input and n patches
         assert (self.h % self.patch_size == 0)
@@ -50,6 +55,9 @@ class TempSegmenter(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         T, B, _, H, W = x.size()
+
+        # patches = einops.rearrange(x, 't b c (h s1) (w s2) -> (b h w) t (s1 s2 c)', s1=self.patch_size,
+        #                            s2=self.patch_size)
 
         tokens = self.patch_embedding(x)
 
@@ -80,8 +88,6 @@ class LinearDecoder(nn.Module):
         H, W = im_size
         GS = H // self.patch_size
         x = self.head(x)
-        x = einops.rearrange(x, "(h w) b c -> b c h w", h=GS)
+        x = einops.rearrange(x, "b (h w) c -> b c h w", h=GS)
         x = F.interpolate(x, size=(H, W), mode="bilinear", align_corners=False)
         return x
-
-

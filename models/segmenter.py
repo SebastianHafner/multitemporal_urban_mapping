@@ -50,7 +50,7 @@ class Segmenter(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         T, B, _, H, W = x.size()
-        x = einops.rearrange(x, 't b c h w -> (t b) c h w')
+        x = einops.rearrange(x, 't b c h w -> (t b) c h w')  # TODO: move this to patch embedding
 
         # tile each image and embed the resulting patches
         tokens = self.patch_embedding(x)
