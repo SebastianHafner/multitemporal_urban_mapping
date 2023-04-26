@@ -2,7 +2,7 @@ _BASE_: "tempsegmenter.yaml"
 DEBUG: True
 
 TRAINER:
-  BATCH_SIZE: 1
+  BATCH_SIZE: 2
 
 DATALOADER:
   TIMESERIES_LENGTH: 5
