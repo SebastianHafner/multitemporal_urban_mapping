@@ -35,7 +35,7 @@ class Segmenter(nn.Module):
         # linear mapper
         self.patch_embedding = PatchEmbedding(self.c, self.patch_size, self.d_model)
 
-        # positional embedding
+        # positional encoding
         self.register_buffer('positional_encodings', get_positional_encodings(self.n_patches ** 2, self.d_model),
                              persistent=False)
 
