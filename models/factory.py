@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 from utils.experiment_manager import CfgNode
-from models import unet, lunet, transformers, segformer, segmenter, tempsegmenter
+from models import unet, lunet, transformers, segformer, segmenter, tempsegmenter, simplenet
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -20,6 +20,8 @@ def create_network(cfg):
         net = tempsegmenter.TempSegmenter(cfg)
     elif cfg.MODEL.TYPE == 'segformer':
         net = segformer.SegFormer(cfg)
+    elif cfg.MODEL.TYPE == 'simplenet':
+        net = simplenet.SimpleNet(cfg)
     else:
         raise Exception(f'Unknown network ({cfg.MODEL.TYPE}).')
     return nn.DataParallel(net)

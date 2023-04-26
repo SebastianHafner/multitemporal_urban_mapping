@@ -10,7 +10,7 @@ from utils.experiment_manager import CfgNode
 
 from models.embeddings import TemporalPatchEmbedding
 from models.encodings import get_positional_encodings
-
+from models import building_blocks as blocks
 
 class SITSSegmenter(nn.Module):
     def __init__(self, cfg: CfgNode):
@@ -29,9 +29,8 @@ class SITSSegmenter(nn.Module):
         self.d_hid = self.d_model * 4
         self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
 
-        resnet = models.resnet18(pretrained=False)
-        modules = list(resnet.children())[:-1]
-        resnet = nn.Sequential(*modules)
+        self.inc = blocks.InConv(self.c, 64, blocks.DoubleConv)
+        self.outc = blocks.OutConv(64, self.d_out)
 
         # input and n patches
         assert (self.h % self.patch_size == 0)

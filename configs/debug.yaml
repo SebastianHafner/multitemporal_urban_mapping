@@ -1,4 +1,4 @@
-_BASE_: "tempsegmenter.yaml"
+_BASE_: "simplenet.yaml"
 DEBUG: True
 
 TRAINER:
