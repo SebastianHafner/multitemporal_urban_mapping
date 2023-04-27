@@ -1,0 +1,7 @@
+_BASE_: "base.yaml"
+
+MODEL:
+  TYPE: 'spatiotemporalsegmenter'
+
+DATALOADER:
+  TIMESERIES_LENGTH: 5

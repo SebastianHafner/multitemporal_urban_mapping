@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 from utils.experiment_manager import CfgNode
-from models import unet, lunet, transformers, segformer, segmenter, tempsegmenter, simplenet
+from models import unet, lunet, segformer, segmenter, tempsegmenter, simplenet, resnet, spatiotemporalsegmenter
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -12,8 +12,6 @@ def create_network(cfg):
         net = unet.UNet(cfg)
     elif cfg.MODEL.TYPE == 'lunet':
         net = lunet.LUNet(cfg)
-    elif cfg.MODEL.TYPE == 'transformer':
-        net = transformers.TransformerModel(cfg)
     elif cfg.MODEL.TYPE == 'segmenter':
         net = segmenter.Segmenter(cfg)
     elif cfg.MODEL.TYPE == 'tempsegmenter':
@@ -22,6 +20,10 @@ def create_network(cfg):
         net = segformer.SegFormer(cfg)
     elif cfg.MODEL.TYPE == 'simplenet':
         net = simplenet.SimpleNet(cfg)
+    elif cfg.MODEL.TYPE == 'resnet':
+        net = resnet.ResNet(cfg)
+    elif cfg.MODEL.TYPE == 'spatiotemporalsegmenter':
+        net = spatiotemporalsegmenter.SpatioTemporalSegmenter(cfg)
     else:
         raise Exception(f'Unknown network ({cfg.MODEL.TYPE}).')
     return nn.DataParallel(net)

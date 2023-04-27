@@ -1,22 +1,21 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision.models as models
 
 from typing import Tuple
 import einops
+import math
 
 from utils.experiment_manager import CfgNode
 
-from models.embeddings import TemporalPatchEmbedding
+from models.embeddings import PatchEmbedding
 from models.encodings import get_positional_encodings
-from models import building_blocks as blocks
 
 
-class SITSSegmenter(nn.Module):
+class SpatioTemporalSegmenter(nn.Module):
     def __init__(self, cfg: CfgNode):
         # Super constructor
-        super(SITSSegmenter, self).__init__()
+        super(SpatioTemporalSegmenter, self).__init__()
 
         # attributes
         self.cfg = cfg
@@ -30,24 +29,25 @@ class SITSSegmenter(nn.Module):
         self.d_hid = self.d_model * 4
         self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
 
-        self.inc = blocks.InConv(self.c, 64, blocks.DoubleConv)
-        self.outc = blocks.OutConv(64, self.d_out)
-
         # input and n patches
+        self.t = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.s1 = int(math.sqrt(self.t))
+        assert (self.s1 ** 2 == self.t)
+
         assert (self.h % self.patch_size == 0)
-        self.n_patches = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.n_patches = self.h // self.patch_size * self.s1
 
         # linear mapper
-        self.patch_embedding = TemporalPatchEmbedding(self.c, self.patch_size, self.d_model)
+        self.patch_embedding = PatchEmbedding(self.c, self.patch_size, self.d_model)
 
-        # positional embedding
-        self.register_buffer('positional_encodings', get_positional_encodings(self.n_patches, self.d_model),
+        # positional encoding
+        self.register_buffer('positional_encodings', get_positional_encodings(self.n_patches ** 2, self.d_model),
                              persistent=False)
 
         # transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=self.n_heads,
-                                                   dim_feedforward=4 * self.d_model, batch_first=True,
-                                                   activation='gelu')
+                                                   dim_feedforward=self.d_hid, batch_first=True,
+                                                   activation=self.activation)
         self.encoder = nn.TransformerEncoder(encoder_layer, self.n_layers)
 
         # decoding
@@ -56,22 +56,20 @@ class SITSSegmenter(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         T, B, _, H, W = x.size()
 
-        # encode all images
-        x = einops.rearrange(x, 't b c h w -> (t b) c h w')
-        x = self.inc(x)
+        x = einops.rearrange(x, '(s1 s2) b c h w -> b c (s1 h) (s2 w)', s1=self.s1)
 
-        # embed features
+        # tile each image and embed the resulting patches
         tokens = self.patch_embedding(x)
 
         # adding positional encoding
-        out = tokens + self.positional_encodings.repeat(tokens.size(0), 1, 1)
+        out = tokens + self.positional_encodings.repeat(B, 1, 1)
 
         # transformer encoder
         out = self.encoder(out)
 
-        out = self.decoder(out, (H, W))
+        out = self.decoder(out, (H * self.s1, W * self.s1))
 
-        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=T)
+        out = einops.rearrange(out, 'b c (s1 h) (s2 w) -> (s1 s2) b c h w', s1=self.s1, s2=self.s1)
 
         return out
 
@@ -93,3 +91,5 @@ class LinearDecoder(nn.Module):
         x = einops.rearrange(x, "b (h w) c -> b c h w", h=GS)
         x = F.interpolate(x, size=(H, W), mode="bilinear", align_corners=False)
         return x
+
+

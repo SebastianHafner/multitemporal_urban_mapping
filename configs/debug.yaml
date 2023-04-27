@@ -1,11 +1,11 @@
-_BASE_: "simplenet.yaml"
+_BASE_: "spatiotemporalsegmenter.yaml"
 DEBUG: True
 
 TRAINER:
   BATCH_SIZE: 2
 
 DATALOADER:
-  TIMESERIES_LENGTH: 5
+  TIMESERIES_LENGTH: 4
 
 AUGMENTATION:
   CROP_SIZE: 16
