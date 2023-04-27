@@ -1,9 +1,5 @@
 import torch
 import torch.nn as nn
-from torch.nn import functional as F
-
-import numpy as np
-import scipy.ndimage as sp_img
 
 
 def get_criterion(loss_type, negative_weight: float = 1, positive_weight: float = 1):
@@ -241,3 +237,17 @@ def inconsistency_loss(logits, target, consistency_function, threshold: float = 
         valid_mask_sum += cons_gt.sum()
 
     return inconsistencies_sum / valid_mask_sum
+
+
+def unsupervised_inconsistency_loss(logits, threshold: float = 0.5):
+    prob = torch.sigmoid(logits)
+    pred = (prob > threshold).to(torch.float32)
+
+    loss = torch.tensor([0.0], dtype=torch.float32, device=pred.device)
+
+    for t in range(pred.shape[0] - 1):
+        logits_t1 = logits[t]
+        pred_t2 = pred[t + 1]
+        loss += iou_loss(logits_t1, pred_t2)
+
+    return loss

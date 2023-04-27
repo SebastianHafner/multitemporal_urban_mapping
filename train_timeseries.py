@@ -9,7 +9,7 @@ from torch.utils import data as torch_data
 import wandb
 import numpy as np
 
-from utils import datasets, loss_functions, evaluation, experiment_manager, parsers
+from utils import datasets, loss_factory, evaluation, experiment_manager, parsers
 from models import factory
 
 
@@ -18,7 +18,7 @@ def run_training(cfg: experiment_manager.CfgNode):
     net.to(device)
     optimizer = optim.AdamW(net.parameters(), lr=cfg.TRAINER.LR, weight_decay=0.01)
 
-    criterion = loss_functions.get_criterion(cfg.MODEL.LOSS_TYPE)
+    criterion = loss_factory.get_criterion(cfg.MODEL.LOSS_TYPE)
 
     # reset the generators
     dataset = datasets.TrainDataset(cfg=cfg, run_type='train')

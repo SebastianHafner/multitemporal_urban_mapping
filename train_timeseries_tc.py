@@ -9,16 +9,18 @@ from torch.utils import data as torch_data
 import wandb
 import numpy as np
 
-from utils import networks, datasets, loss_functions, evaluation, experiment_manager, parsers
+from utils.experiment_manager import CfgNode
+from utils import datasets, loss_factory, evaluation, experiment_manager, parsers
+from models import factory
 
 
-def run_training(cfg: experiment_manager.CfgNode):
-    net = networks.create_network(cfg)
+def run_training(cfg: CfgNode):
+    net = factory.create_network(cfg)
     net.to(device)
     optimizer = optim.AdamW(net.parameters(), lr=cfg.TRAINER.LR, weight_decay=0.01)
 
-    criterion_seg = loss_functions.get_criterion(cfg.MODEL.LOSS_TYPE)
-    criterion_tc = loss_functions.inconsistency_loss
+    criterion_seg = loss_factory.get_criterion(cfg.MODEL.LOSS_TYPE)
+    criterion_tc = loss_factory.inconsistency_loss
 
     # reset the generators
     dataset = datasets.TrainDataset(cfg=cfg, run_type='train')
@@ -101,7 +103,7 @@ def run_training(cfg: experiment_manager.CfgNode):
         if f1_val > best_f1_val:
             best_f1_val = f1_val
             print(f'saving network (F1 {f1_val:.3f})', flush=True)
-            networks.save_checkpoint(net, optimizer, epoch, cfg)
+            factory.save_checkpoint(net, optimizer, epoch, cfg)
             trigger_times = 0
         else:
             trigger_times += 1
@@ -111,7 +113,7 @@ def run_training(cfg: experiment_manager.CfgNode):
         if stop_training:
             break
 
-    net, *_ = networks.load_checkpoint(cfg, device)
+    net, *_ = factory.load_checkpoint(cfg, device)
     _ = evaluation.model_evaluation(net, cfg, device, 'test', epoch_float, global_step)
 
 

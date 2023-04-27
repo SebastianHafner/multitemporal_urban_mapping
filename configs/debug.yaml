@@ -1,11 +1,11 @@
-_BASE_: "spatiotemporalsegmenter.yaml"
+_BASE_: "unetouttransformer.yaml"
 DEBUG: True
 
 TRAINER:
   BATCH_SIZE: 2
 
 DATALOADER:
-  TIMESERIES_LENGTH: 4
+  TIMESERIES_LENGTH: 5
 
 AUGMENTATION:
   CROP_SIZE: 16
