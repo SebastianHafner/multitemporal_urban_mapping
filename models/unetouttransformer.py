@@ -23,7 +23,6 @@ class UNetOutTransformer(nn.Module):
         self.c = cfg.MODEL.IN_CHANNELS
         self.d_out = cfg.MODEL.OUT_CHANNELS
         self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
-        self.b = cfg.TRAINER.BATCH_SIZE
         self.t = cfg.DATALOADER.TIMESERIES_LENGTH
         self.topology = cfg.MODEL.TOPOLOGY
         self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
@@ -39,8 +38,8 @@ class UNetOutTransformer(nn.Module):
         self.outc = blocks.OutConv(self.topology[0], self.d_out)
 
         # positional encoding
-        positional_encodings = get_positional_encodings(self.t, self.d_model).repeat(self.b * self.h * self.w, 1, 1)
-        self.register_buffer('positional_encodings', positional_encodings, persistent=False)
+        self.register_buffer('positional_encodings', get_positional_encodings(self.t, self.d_model),
+                             persistent=False)
 
         # transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=self.n_heads,
@@ -60,7 +59,7 @@ class UNetOutTransformer(nn.Module):
         tokens = einops.rearrange(out, 't b f h w -> (b h w) t f')
 
         # adding positional encoding
-        out = tokens + self.positional_encodings
+        out = tokens + self.positional_encodings.repeat(B * H * W, 1, 1)
 
         # transformer encoder
         out = self.transformer(out)
