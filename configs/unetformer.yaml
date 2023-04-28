@@ -1,10 +1,10 @@
 _BASE_: "base.yaml"
 
 MODEL:
-  TYPE: 'unetouttransformer'
+  TYPE: 'unetformer'
   TOPOLOGY: [64, 128,]
   TRANSFORMER_PARAMS:
     N_HEADS: 2
 
 AUGMENTATION:
-  CROP_SIZE: 128
+  CROP_SIZE: 32
