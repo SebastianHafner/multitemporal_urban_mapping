@@ -1,4 +1,4 @@
-_BASE_: "unetformer.yaml"
+_BASE_: "unetouttransformer.yaml"
 DEBUG: True
 
 TRAINER:
