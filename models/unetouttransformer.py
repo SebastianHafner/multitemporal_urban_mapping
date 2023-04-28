@@ -48,15 +48,15 @@ class UNetOutTransformer(nn.Module):
         self.transformer = nn.TransformerEncoder(encoder_layer, self.n_layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        T, B, _, H, W = x.size()
+        B, T, _, H, W = x.size()
 
         # feature extraction with unet
-        x = einops.rearrange(x, 't b c h w -> (t b) c h w')
+        x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
         out = self.decoder(self.encoder(self.inc(x)))
-        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=T)
+        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
 
         # temporal modeling with transformer
-        tokens = einops.rearrange(out, 't b f h w -> (b h w) t f')
+        tokens = einops.rearrange(out, 'b t f h w -> (b h w) t f')
 
         # adding positional encoding
         out = tokens + self.positional_encodings.repeat(B * H * W, 1, 1)
@@ -64,10 +64,10 @@ class UNetOutTransformer(nn.Module):
         # transformer encoder
         out = self.transformer(out)
 
-        out = einops.rearrange(out, '(b1 h1 h2) t f -> t b1 f h1 h2', b1=B, h1=H)
+        out = einops.rearrange(out, '(b1 h1 h2) t f -> b1 t f h1 h2', b1=B, h1=H)
 
-        out = einops.rearrange(out, 't b f h w -> (t b) f h w')
+        out = einops.rearrange(out, 'b t f h w -> (b t) f h w')
         out = self.outc(out)
-        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=T)
+        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
 
         return out

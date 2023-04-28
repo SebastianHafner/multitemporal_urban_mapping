@@ -24,11 +24,10 @@ class UNet(nn.Module):
         self.outc = blocks.OutConv(topology[0], n_classes)
 
     def forward(self, x: torch.Tensor) -> torch.tensor:
-        # x (TS, B, C, H, W)
-        T, B, _, H, W = x.size()
-        x = einops.rearrange(x, 't b c h w -> (t b) c h w')
+        B, T, _, H, W = x.size()
+        x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
         out = self.outc(self.decoder(self.encoder(self.inc(x))))
-        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=T)
+        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
         return out
 
 

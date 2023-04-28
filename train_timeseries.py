@@ -57,10 +57,10 @@ def run_training(cfg: experiment_manager.CfgNode):
             optimizer.zero_grad()
 
             # => TimeStep, BatchSize, ...
-            x = batch['x'].to(device).transpose(0, 1)
+            x = batch['x'].to(device)
             logits = net(x)
 
-            y = batch['y'].to(device).transpose(0, 1)
+            y = batch['y'].to(device)
             if cfg.MODEL.LOSS_TYPE == 'CrossEntropyLoss':
                 logits = logits.flatten(start_dim=0, end_dim=1)
                 y = y.flatten(start_dim=0, end_dim=1)[:, 0].long()
