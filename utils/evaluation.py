@@ -3,6 +3,7 @@ from torch.utils import data as torch_data
 import wandb
 from utils import datasets
 import numpy as np
+import einops
 
 
 class TCMeasurer(object):
@@ -16,13 +17,13 @@ class TCMeasurer(object):
         self.eps = 10e-05
 
     def add_sample(self, y: torch.Tensor, y_hat: torch.Tensor):
-        # y and y_hat (T, BS, 1, H, W)
-        T, BS, _, H, W = y.size()
+        y, y_hat = einops.rearrange(y, 'b t c h w -> t b c h w'), einops.rearrange(y_hat, 'b t c h w -> t b c h w')
+        T, B, _, H, W = y.size()
 
         y = y.bool()
         y_hat = y_hat > self.threshold
 
-        for b in range(BS):
+        for b in range(B):
             unsup_tc = self.unsupervised_tc(y[:, b], y_hat[:, b])
             self.unsupervised_tc_values.append(unsup_tc.cpu().item())
             sup_tc = self.supervised_tc(y[:, b], y_hat[:, b])
@@ -144,13 +145,12 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
                                        drop_last=False)
 
     for step, item in enumerate(dataloader):
-        # => TimeStep, BatchSize, ...
-        x = item['x'].to(device).transpose(0, 1)
+        x = item['x'].to(device)
 
         with torch.no_grad():
             logits = net(x)
 
-        y = item['y'].to(device).transpose(0, 1)
+        y = item['y'].to(device)
         if cfg.MODEL.LOSS_TYPE == 'CrossEntropyLoss':
             y_hat = torch.argmax(torch.softmax(logits, dim=2), dim=2, keepdim=True)
         else:
