@@ -1,7 +1,0 @@
-_BASE_: "base.yaml"
-
-MODEL:
-  TYPE: 'unet'
-
-AUGMENTATION:
-  GAMMA_CORRECTION: True

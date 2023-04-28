@@ -37,44 +37,44 @@ class UNetFormer(nn.Module):
         self.decoder = unet.Decoder(cfg)
         self.outc = blocks.OutConv(self.topology[0], self.d_out)
 
-        # positional encoding
-        self.register_buffer('positional_encodings', get_positional_encodings(self.t, self.d_model),
-                             persistent=False)
-
         # transformers
-        self.transformers = []
+        transformers = []
         transformer_dims = [self.topology[-1]] + list(self.topology[::-1])
-        for d_model in transformer_dims:
+        for i, d_model in enumerate(transformer_dims):
+            # positional encoding
+            self.register_buffer(f'positional_encodings_{i}', get_positional_encodings(self.t, d_model),
+                                 persistent=False)
+
             encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=self.n_heads,
                                                        dim_feedforward=self.d_hid, batch_first=True,
                                                        activation=self.activation)
-            self.transformers.append(nn.TransformerEncoder(encoder_layer, self.n_layers))
+            transformers.append(nn.TransformerEncoder(encoder_layer, self.n_layers))
+        self.transformers = nn.ModuleList(transformers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        T, B, _, H, W = x.size()
+        B, T, _, H, W = x.size()
 
         # feature extraction with unet
-        x = einops.rearrange(x, 't b c h w -> (t b) c h w')
+        x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
         features = self.encoder(self.inc(x))
 
         # temporal modeling of features with transformer
         for i, transformer in enumerate(self.transformers):
             f = features[i]
-            f = einops.rearrange(f, '(b1 b2) c h w -> b1 b2 c h w', b1=T)
+            tokens = einops.rearrange(f, '(b1 b2) f h w -> (b1 h w) b2 f', b1=B)
 
+            # adding positional encoding
+            scale_factor = 2**(len(self.topology) - i)
+            h, w = H // scale_factor, W // scale_factor
+            tokens = tokens + getattr(self, f'positional_encodings_{i}').repeat(B * h * w, 1, 1)
 
-        tokens = einops.rearrange(out, 't b f h w -> (b h w) t f')
+            f = transformer(tokens)
 
-        # adding positional encoding
-        out = tokens + self.positional_encodings.repeat(B * H * W, 1, 1)
+            f = einops.rearrange(f, '(b1 h1 h2) t f -> (b1 t) f h1 h2', b1=B, h1=h)
+            features[i] = f
 
-        # transformer encoder
-        out = self.transformer(out)
-
-        out = einops.rearrange(out, '(b1 h1 h2) t f -> t b1 f h1 h2', b1=B, h1=H)
-
-        out = einops.rearrange(out, 't b f h w -> (t b) f h w')
-        out = self.outc(out)
-        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=T)
+        features = self.decoder(features)
+        out = self.outc(features)
+        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
 
         return out

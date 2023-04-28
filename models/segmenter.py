@@ -49,21 +49,21 @@ class Segmenter(nn.Module):
         self.decoder = LinearDecoder(self.d_out, self.patch_size, self.d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        T, B, _, H, W = x.size()
-        x = einops.rearrange(x, 't b c h w -> (t b) c h w')  # TODO: move this to patch embedding
+        B, T, _, H, W = x.size()
+        x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
 
         # tile each image and embed the resulting patches
         tokens = self.patch_embedding(x)
 
         # adding positional encoding
-        out = tokens + self.positional_encodings.repeat(T * B, 1, 1)
+        out = tokens + self.positional_encodings.repeat(B * T, 1, 1)
 
         # transformer encoder
         out = self.encoder(out)
 
         out = self.decoder(out, (H, W))
 
-        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=T)
+        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
 
         return out
 
