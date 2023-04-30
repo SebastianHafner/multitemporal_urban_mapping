@@ -137,6 +137,7 @@ if __name__ == '__main__':
                     'batch_size': {'values': [8, 4]},
                 }
         }
+
         # Step 3: Initialize sweep by passing in config or resume sweep
         sweep_id = wandb.sweep(sweep=sweep_config, project=args.wandb_project, entity='population_mapping')
         # Step 4: Call to `wandb.agent` to start a sweep

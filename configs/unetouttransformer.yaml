@@ -2,7 +2,7 @@ _BASE_: "base.yaml"
 
 MODEL:
   TYPE: 'unetouttransformer'
-  TOPOLOGY: [64, 128,]
+  TRANSFORMER: True
   TRANSFORMER_PARAMS:
     N_HEADS: 2
 

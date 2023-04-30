@@ -2,6 +2,7 @@ _BASE_: "base.yaml"
 
 MODEL:
   TYPE: 'segmenter'
+  TRANSFORMER: True
   TRANSFORMER_PARAMS:
     N_LAYERS: 4
     N_HEADS: 6

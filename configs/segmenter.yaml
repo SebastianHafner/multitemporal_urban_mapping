@@ -2,3 +2,4 @@ _BASE_: "base.yaml"
 
 MODEL:
   TYPE: 'segmenter'
+  TRANSFORMER: True

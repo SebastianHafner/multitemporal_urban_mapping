@@ -2,6 +2,7 @@ _BASE_: "base.yaml"
 
 MODEL:
   TYPE: 'spatiotemporalsegmenter'
+  TRANSFORMER: True
 
 DATALOADER:
   TIMESERIES_LENGTH: 4
