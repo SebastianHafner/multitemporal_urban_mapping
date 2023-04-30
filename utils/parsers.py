@@ -27,6 +27,7 @@ def sweep_argument_parser():
     parser.add_argument('-d', "--dataset-dir", dest='dataset_dir', default="", required=True,
                         help="path to output directory")
     parser.add_argument('-p', "--wandb-project", dest='wandb_project', required=True, help="wandb project")
+    parser.add_argument('-i', "--sweep-id", dest='sweep_id', default=None, required=False, help="resume a sweep")
 
     parser.add_argument(
         "opts",
