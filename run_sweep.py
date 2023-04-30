@@ -8,7 +8,7 @@ import wandb
 import numpy as np
 
 from utils import datasets, loss_factory, evaluation, experiment_manager, parsers
-from models import factory
+from models import model_factory
 # https://github.com/wandb/examples/blob/master/colabs/pytorch/Organizing_Hyperparameter_Sweeps_in_PyTorch_with_W%26B.ipynb
 if __name__ == '__main__':
     args = parsers.sweep_argument_parser().parse_known_args()[0]
@@ -28,7 +28,7 @@ if __name__ == '__main__':
             torch.backends.cudnn.deterministic = True
             torch.backends.cudnn.benchmark = False
 
-        net = factory.create_network(cfg)
+        net = model_factory.create_network(cfg)
         net.to(device)
         optimizer = optim.AdamW(net.parameters(), lr=sweep_cfg.lr, weight_decay=0.01)
 
@@ -70,11 +70,14 @@ if __name__ == '__main__':
                 net.train()
                 optimizer.zero_grad()
 
-                # => TimeStep, BatchSize, ...
-                x = batch['x'].to(device).transpose(0, 1)
+                x = batch['x'].to(device)
                 logits = net(x)
 
-                y = batch['y'].to(device).transpose(0, 1)
+                y = batch['y'].to(device)
+                if cfg.MODEL.LOSS_TYPE == 'CrossEntropyLoss':
+                    logits = logits.flatten(start_dim=0, end_dim=1)
+                    y = y.flatten(start_dim=0, end_dim=1)[:, 0].long()
+
                 loss = criterion(logits, y)
                 loss.backward()
                 optimizer.step()
@@ -108,7 +111,7 @@ if __name__ == '__main__':
             if f1_val > best_f1_val:
                 best_f1_val = f1_val
                 print(f'saving network (F1 {f1_val:.3f})', flush=True)
-                factory.save_checkpoint(net, optimizer, epoch, cfg)
+                model_factory.save_checkpoint(net, optimizer, epoch, cfg)
                 trigger_times = 0
             else:
                 trigger_times += 1
@@ -118,7 +121,7 @@ if __name__ == '__main__':
             if stop_training:
                 break
 
-        net, *_ = factory.load_checkpoint(cfg, device)
+        net, *_ = model_factory.load_checkpoint(cfg, device)
         _ = evaluation.model_evaluation(net, cfg, device, 'test', epoch_float, global_step)
 
 

@@ -56,7 +56,6 @@ def run_training(cfg: experiment_manager.CfgNode):
             net.train()
             optimizer.zero_grad()
 
-            # => TimeStep, BatchSize, ...
             x = batch['x'].to(device)
             logits = net(x)
 
