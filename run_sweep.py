@@ -108,15 +108,20 @@ if __name__ == '__main__':
                 _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
                 f1_val = evaluation.model_evaluation(net, cfg, device, 'val', epoch_float, global_step)
 
-                if f1_val > best_f1_val:
+                if f1_val <= best_f1_val:
+                    trigger_times += 1
+                    if trigger_times > cfg.TRAINER.PATIENCE:
+                        stop_training = True
+                else:
                     best_f1_val = f1_val
+                    wandb.log({
+                        'best val f1': best_f1_val,
+                        'step': global_step,
+                        'epoch': epoch_float,
+                    })
                     print(f'saving network (F1 {f1_val:.3f})', flush=True)
                     model_factory.save_checkpoint(net, optimizer, epoch, cfg)
                     trigger_times = 0
-                else:
-                    trigger_times += 1
-                    if trigger_times >= cfg.TRAINER.PATIENCE:
-                        stop_training = True
 
                 if stop_training:
                     break

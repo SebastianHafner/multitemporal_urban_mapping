@@ -1,8 +1,11 @@
-_BASE_: "unetformer.yaml"
+_BASE_: "unetouttransformer.yaml"
 DEBUG: True
 
 TRAINER:
   BATCH_SIZE: 2
+
+MODEL:
+  CONS_LOSS_TYPE: 'UnsupConsLoss'
 
 DATALOADER:
   TIMESERIES_LENGTH: 5

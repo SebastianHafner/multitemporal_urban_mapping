@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from einops import rearrange
 
 
 def get_criterion(loss_type, negative_weight: float = 1, positive_weight: float = 1):
@@ -28,6 +29,10 @@ def get_criterion(loss_type, negative_weight: float = 1, positive_weight: float 
         criterion = dice_like_loss
     elif loss_type == 'L2':
         criterion = nn.MSELoss()
+    elif loss_type == 'ConsLoss':
+        criterion = consistency_loss
+    elif loss_type == 'UnsupConsLoss':
+        criterion = unsupervised_consistency_loss
     else:
         raise Exception(f'unknown loss {loss_type}')
 
@@ -200,9 +205,10 @@ def soft_dice_loss_balanced(input: torch.Tensor, target: torch.Tensor):
 
 
 # https://github.com/SebastianHafner/f2f-consistent-semantic-segmentation/blob/master/model/loss.py
-def inconsistency_loss(logits, target, consistency_function, threshold: float = 0.5):
-    # output: Time, BatchSize, Height, Width
-    # labels: Time, BatchSize, Height, Width
+def consistency_loss(logits: torch.Tensor, target: torch.Tensor, consistency_function: str = 'abs_diff_true',
+                     threshold: float = 0.5):
+    logits, target = rearrange(logits, 'b t c h w -> t b c h w'), rearrange(target, 'b t c h w -> t b c h w')
+
     prob = torch.sigmoid(logits)
     pred = (prob > threshold).to(torch.float32)
     valid_mask_sum = torch.tensor([0.0], dtype=torch.float32, device=pred.device)
@@ -239,7 +245,8 @@ def inconsistency_loss(logits, target, consistency_function, threshold: float = 
     return inconsistencies_sum / valid_mask_sum
 
 
-def unsupervised_inconsistency_loss(logits, threshold: float = 0.5):
+def unsupervised_consistency_loss(logits, targets=None, threshold: float = 0.5):
+    logits = rearrange(logits, 'b t c h w -> t b c h w')
     prob = torch.sigmoid(logits)
     pred = (prob > threshold).to(torch.float32)
 

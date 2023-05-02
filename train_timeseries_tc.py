@@ -11,16 +11,16 @@ import numpy as np
 
 from utils.experiment_manager import CfgNode
 from utils import datasets, loss_factory, evaluation, experiment_manager, parsers
-from models import factory
+from models import model_factory
 
 
 def run_training(cfg: CfgNode):
-    net = factory.create_network(cfg)
+    net = model_factory.create_network(cfg)
     net.to(device)
     optimizer = optim.AdamW(net.parameters(), lr=cfg.TRAINER.LR, weight_decay=0.01)
 
     criterion_seg = loss_factory.get_criterion(cfg.MODEL.LOSS_TYPE)
-    criterion_tc = loss_factory.inconsistency_loss
+    criterion_tc = loss_factory.get_criterion(cfg.MODEL.CONS_LOSS_TYPE)
 
     # reset the generators
     dataset = datasets.TrainDataset(cfg=cfg, run_type='train')
@@ -57,13 +57,12 @@ def run_training(cfg: CfgNode):
             net.train()
             optimizer.zero_grad()
 
-            # => TimeStep, BatchSize, ...
-            x = batch['x'].to(device).transpose(0, 1)
+            x = batch['x'].to(device)
             logits = net(x)
 
-            y = batch['y'].to(device).transpose(0, 1)
+            y = batch['y'].to(device)
             loss_seg = criterion_seg(logits, y)
-            loss_tc = cfg.TRAINER.LAMBDA * criterion_tc(logits, y, 'abs_diff_true')
+            loss_tc = cfg.TRAINER.LAMBDA * criterion_tc(logits, y)
 
             loss = loss_seg + loss_tc
 
@@ -100,20 +99,25 @@ def run_training(cfg: CfgNode):
         _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
         f1_val = evaluation.model_evaluation(net, cfg, device, 'val', epoch_float, global_step)
 
-        if f1_val > best_f1_val:
-            best_f1_val = f1_val
-            print(f'saving network (F1 {f1_val:.3f})', flush=True)
-            factory.save_checkpoint(net, optimizer, epoch, cfg)
-            trigger_times = 0
-        else:
+        if f1_val <= best_f1_val:
             trigger_times += 1
-            if trigger_times >= cfg.TRAINER.PATIENCE:
+            if trigger_times > cfg.TRAINER.PATIENCE:
                 stop_training = True
+        else:
+            best_f1_val = f1_val
+            wandb.log({
+                'best val f1': best_f1_val,
+                'step': global_step,
+                'epoch': epoch_float,
+            })
+            print(f'saving network (F1 {f1_val:.3f})', flush=True)
+            model_factory.save_checkpoint(net, optimizer, epoch, cfg)
+            trigger_times = 0
 
         if stop_training:
             break
 
-    net, *_ = factory.load_checkpoint(cfg, device)
+    net, *_ = model_factory.load_checkpoint(cfg, device)
     _ = evaluation.model_evaluation(net, cfg, device, 'test', epoch_float, global_step)
 
 
