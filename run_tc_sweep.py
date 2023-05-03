@@ -36,6 +36,7 @@ if __name__ == '__main__':
 
             criterion_seg = loss_factory.get_criterion(cfg.MODEL.LOSS_TYPE)
             criterion_tc = loss_factory.get_criterion(sweep_cfg.cons_loss_type)
+            tc_lambda = sweep_cfg.cons_lambda
 
             # reset the generators
             dataset = datasets.TrainDataset(cfg=cfg, run_type='train')
@@ -77,7 +78,7 @@ if __name__ == '__main__':
 
                     y = batch['y'].to(device)
                     loss_seg = criterion_seg(logits, y)
-                    loss_tc = sweep_cfg.cons_lambda * criterion_tc(logits, y)
+                    loss_tc = tc_lambda * criterion_tc(logits, y)
 
                     loss = loss_seg + loss_tc
 
@@ -85,6 +86,8 @@ if __name__ == '__main__':
                     optimizer.step()
 
                     loss_set.append(loss.item())
+                    loss_seg_set.append(loss_seg.item())
+                    loss_tc_set.append(loss_tc.item())
 
                     global_step += 1
                     epoch_float = global_step / steps_per_epoch
