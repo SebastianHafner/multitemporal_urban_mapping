@@ -148,7 +148,7 @@ if __name__ == '__main__':
                     'lr': {'values': [0.0001]},
                     'batch_size': {'values': [4]},
                     'cons_lambda': {'values': [0.01, 0.1]},
-                    'cons_loss_type': {'values': ['ConsLoss', 'UnsupConsLoss']},
+                    'cons_loss_type': {'values': ['ConsLoss', 'UnsupConsLoss', 'UnsupLSTConsLoss']},
                 }
         }
 
