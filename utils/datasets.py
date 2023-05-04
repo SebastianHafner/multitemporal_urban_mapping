@@ -13,7 +13,7 @@ class AbstractSpaceNet7Dataset(torch.utils.data.Dataset):
         super().__init__()
         self.cfg = cfg
         self.root_path = Path(cfg.PATHS.DATASET)
-        self.label_type = cfg.DATALOADER.LABEL_TYPE
+        self.task = cfg.MODEL.TASK
 
         self.include_alpha = cfg.DATALOADER.INCLUDE_ALPHA
         self.pad = cfg.DATALOADER.PAD_BORDERS
@@ -115,16 +115,16 @@ class TrainDataset(AbstractSpaceNet7Dataset):
         timestamps = sorted([timestamps[t] for t in t_values], key=lambda ts: int(ts['year']) * 12 + int(ts['month']))
 
         images = [self.load_planet_mosaic(aoi_id, ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
-        if self.label_type == 'segmentation':
+        if self.task == 'segmentation':
             labels = [self.load_building_label(aoi_id, ts['year'], ts['month']) for ts in timestamps]
-        elif self.label_type == 'change':
+        elif self.task == 'change':
             labels = []
             ts1 = timestamps[0]
             for t in range(1, len(timestamps)):
                 ts2 = timestamps[t]
                 change_label = self.load_change_label(aoi_id, ts1['year'], ts1['month'], ts2['year'], ts2['month'])
                 labels.append(change_label)
-        elif self.label_type == 'both':
+        elif self.task == 'both':
             labels = []
         else:
             raise Exception('Unknown label type')
@@ -198,15 +198,15 @@ class EvalDataset(AbstractSpaceNet7Dataset):
         images = [self.load_planet_mosaic(ts['aoi_id'], ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
         images = np.stack(images)[:, i:i + self.tiling, j:j + self.tiling]
 
-        if self.label_type == 'segmentation':
+        if self.task == 'segmentation':
             labels = [self.load_building_label(aoi_id, ts['year'], ts['month']) for ts in timestamps]
-        elif self.label_type == 'change':
+        elif self.task == 'change':
             labels = []
             for t in range(1, len(timestamps)):
                 ts1, ts2 = timestamps[t - 1], timestamps[t]
                 change_label = self.load_change_label(aoi_id, ts1['year'], ts1['month'], ts2['year'], ts2['month'])
                 labels.append(change_label)
-        elif self.label_type == 'both':
+        elif self.task == 'both':
             labels = []
         else:
             raise Exception('Unknown label type')

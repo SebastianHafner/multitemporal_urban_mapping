@@ -12,6 +12,7 @@ TRAINER:
 
 MODEL:
   TYPE: 'unet'
+  TASK: 'segmentation'
   IN_CHANNELS: 3
   OUT_CHANNELS: 1
   LOSS_TYPE: 'PowerJaccardLoss'
@@ -34,7 +35,6 @@ DATALOADER:
   TRAINING_MULTIPLIER: 100
   PAD_BORDERS: True
   TIMESERIES_LENGTH: 5
-  LABEL_TYPE: 'segmentation'
 
 AUGMENTATION:
   CROP_SIZE: 256

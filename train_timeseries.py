@@ -58,11 +58,9 @@ def run_training(cfg: experiment_manager.CfgNode):
 
             x = batch['x'].to(device)
             logits = net(x)
+            logits[:, 1:] if cfg.MODEL.TYPE == 'change' else logits
 
             y = batch['y'].to(device)
-            if cfg.MODEL.LOSS_TYPE == 'CrossEntropyLoss':
-                logits = logits.flatten(start_dim=0, end_dim=1)
-                y = y.flatten(start_dim=0, end_dim=1)[:, 0].long()
 
             loss = criterion(logits, y)
             loss.backward()

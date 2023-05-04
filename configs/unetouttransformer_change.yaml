@@ -2,9 +2,7 @@ _BASE_: "base.yaml"
 
 MODEL:
   TYPE: 'unetouttransformer'
+  TASK: 'change'
   TRANSFORMER: True
   TRANSFORMER_PARAMS:
     N_HEADS: 2
-
-DATALOADER:
-  LABEL_TYPE: 'change'
