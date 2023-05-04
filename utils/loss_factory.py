@@ -32,7 +32,7 @@ def get_criterion(loss_type, negative_weight: float = 1, positive_weight: float 
     elif loss_type == 'ConsLoss':
         criterion = consistency_loss
     elif loss_type == 'UnsupConsLoss':
-        criterion = unsupervised_consistency_loss
+        criterion = unsup_cons_loss
     elif loss_type == 'UnsupLSTConsLoss':
         criterion = unsup_longshortterm_cons_loss
     else:
@@ -247,17 +247,18 @@ def consistency_loss(logits: torch.Tensor, target: torch.Tensor, consistency_fun
     return inconsistencies_sum / valid_mask_sum
 
 
-def unsupervised_consistency_loss(logits, targets=None, threshold: float = 0.5):
+def unsup_cons_loss(logits, targets=None, threshold: float = 0.5):
     logits = rearrange(logits, 'b t c h w -> t b c h w')
     prob = torch.sigmoid(logits)
     pred = (prob > threshold).to(torch.float32)
+    loss_function = power_jaccard_loss
 
     loss = torch.tensor([0.0], dtype=torch.float32, device=pred.device)
 
     for t in range(pred.shape[0] - 1):
         logits_t1 = logits[t]
         pred_t2 = pred[t + 1]
-        loss += iou_loss(logits_t1, pred_t2)
+        loss += loss_function(logits_t1, pred_t2)
 
     return loss
 
