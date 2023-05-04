@@ -58,7 +58,7 @@ def run_training(cfg: experiment_manager.CfgNode):
 
             x = batch['x'].to(device)
             logits = net(x)
-            logits[:, 1:] if cfg.MODEL.TYPE == 'change' else logits
+            logits = logits[:, 1:] if cfg.MODEL.TASK == 'change' else logits
 
             y = batch['y'].to(device)
 
