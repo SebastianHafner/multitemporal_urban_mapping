@@ -33,6 +33,8 @@ def get_criterion(loss_type, negative_weight: float = 1, positive_weight: float 
         criterion = consistency_loss
     elif loss_type == 'UnsupConsLoss':
         criterion = unsupervised_consistency_loss
+    elif loss_type == 'UnsupLSTConsLoss':
+        criterion = unsup_longshortterm_cons_loss
     else:
         raise Exception(f'unknown loss {loss_type}')
 
@@ -259,6 +261,24 @@ def unsupervised_consistency_loss(logits, targets=None, threshold: float = 0.5):
 
     return loss
 
+
+def unsup_longshortterm_cons_loss(logits, targets=None, threshold: float = 0.5):
+    logits = rearrange(logits, 'b t c h w -> t b c h w')
+    prob = torch.sigmoid(logits)
+    pred = (prob > threshold).to(torch.float32)
+    loss_function = power_jaccard_loss
+
+    loss = torch.tensor([0.0], dtype=torch.float32, device=pred.device)
+
+    logits_start = logits[0]
+    for t in range(1, pred.shape[0]):
+        logits_t1 = logits[t - 1]
+        pred_t2 = pred[t]
+        loss += loss_function(logits_t1, pred_t2)
+        if t > 1:
+            loss += loss_function(logits_start, pred_t2)
+
+    return loss
 
 # https://github.com/SebastianHafner/f2f-consistent-semantic-segmentation/blob/master/model/loss.py
 def shortlongterm_consistency_loss(logits: torch.Tensor, target: torch.Tensor,
