@@ -13,6 +13,7 @@ class AbstractSpaceNet7Dataset(torch.utils.data.Dataset):
         super().__init__()
         self.cfg = cfg
         self.root_path = Path(cfg.PATHS.DATASET)
+        self.label_type = cfg.DATALOADER.LABEL_TYPE
 
         self.include_alpha = cfg.DATALOADER.INCLUDE_ALPHA
         self.pad = cfg.DATALOADER.PAD_BORDERS
@@ -113,8 +114,20 @@ class TrainDataset(AbstractSpaceNet7Dataset):
         t_values = sorted(np.random.randint(0, len(timestamps), size=self.T))
         timestamps = sorted([timestamps[t] for t in t_values], key=lambda ts: int(ts['year']) * 12 + int(ts['month']))
 
-        images = [self.load_planet_mosaic(ts['aoi_id'], ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
-        labels = [self.load_building_label(ts['aoi_id'], ts['year'], ts['month']) for ts in timestamps]
+        images = [self.load_planet_mosaic(aoi_id, ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
+        if self.label_type == 'segmentation':
+            labels = [self.load_building_label(aoi_id, ts['year'], ts['month']) for ts in timestamps]
+        elif self.label_type == 'change':
+            labels = []
+            ts1 = timestamps[0]
+            for t in range(1, len(timestamps)):
+                ts2 = timestamps[t]
+                change_label = self.load_change_label(aoi_id, ts1['year'], ts1['month'], ts2['year'], ts2['month'])
+                labels.append(change_label)
+        elif self.label_type == 'both':
+            labels = []
+        else:
+            raise Exception('Unknown label type')
 
         images, labels = self.transform((np.stack(images), np.stack(labels)))
 
@@ -184,7 +197,19 @@ class EvalDataset(AbstractSpaceNet7Dataset):
 
         images = [self.load_planet_mosaic(ts['aoi_id'], ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
         images = np.stack(images)[:, i:i + self.tiling, j:j + self.tiling]
-        labels = [self.load_building_label(ts['aoi_id'], ts['year'], ts['month']) for ts in timestamps]
+
+        if self.label_type == 'segmentation':
+            labels = [self.load_building_label(aoi_id, ts['year'], ts['month']) for ts in timestamps]
+        elif self.label_type == 'change':
+            labels = []
+            for t in range(1, len(timestamps)):
+                ts1, ts2 = timestamps[t - 1], timestamps[t]
+                change_label = self.load_change_label(aoi_id, ts1['year'], ts1['month'], ts2['year'], ts2['month'])
+                labels.append(change_label)
+        elif self.label_type == 'both':
+            labels = []
+        else:
+            raise Exception('Unknown label type')
         labels = np.stack(labels)[:, i:i + self.tiling, j:j + self.tiling]
 
         images, labels = self.transform((images, labels))
@@ -199,68 +224,6 @@ class EvalDataset(AbstractSpaceNet7Dataset):
         }
 
         return item
-
-    def __len__(self):
-        return self.length
-
-    def __str__(self):
-        return f'Dataset with {self.length} samples.'
-
-
-class EvalSingleAOIDataset(AbstractSpaceNet7Dataset):
-
-    def __init__(self, cfg: experiment_manager.CfgNode, aoi_id: str):
-        super().__init__(cfg)
-
-        self.aoi_id = aoi_id
-
-        # handling transformations of data
-        self.transform = augmentations.compose_transformations(cfg, no_augmentations=True)
-
-        self.metadata = geofiles.load_json(self.root_path / f'metadata_siamesessl.json')
-
-        self.samples = []
-        for timestamp in self.metadata[self.aoi_id]:
-            if not timestamp['mask']:
-                self.samples.append(timestamp)
-
-        manager = multiprocessing.Manager()
-        self.samples = manager.list(self.samples)
-        self.metadata = manager.dict(self.metadata)
-
-        self.length = len(self.samples)
-
-    def __getitem__(self, index):
-
-        sample = self.samples[index]
-        dataset, year, month = sample['dataset'], sample['year'], sample['month']
-
-        img = self.load_planet_mosaic(self.aoi_id, dataset, year, month)
-        buildings = self.load_building_label(self.aoi_id, year, month)
-
-        img, buildings = self.transform((img, buildings))
-
-        item = {
-            'x': img,
-            'y': buildings,
-            'aoi_id': self.aoi_id,
-            'year': year,
-        }
-
-        return item
-
-    def get_dims(self) -> tuple:
-        sample = self.samples[0]
-        dataset, year, month = sample['dataset'], sample['year'], sample['month']
-        buildings = self.load_building_label(self.aoi_id, year, month)
-        m, n, _ = buildings.shape
-        return (m, n)
-
-    def get_index(self, aoi_id: str) -> int:
-        for index, candidate_aoi_id in enumerate(self.aoi_ids):
-            if aoi_id == candidate_aoi_id:
-                return index
-        return None
 
     def __len__(self):
         return self.length
