@@ -258,3 +258,44 @@ def unsupervised_consistency_loss(logits, targets=None, threshold: float = 0.5):
         loss += iou_loss(logits_t1, pred_t2)
 
     return loss
+
+
+# https://github.com/SebastianHafner/f2f-consistent-semantic-segmentation/blob/master/model/loss.py
+def shortlongterm_consistency_loss(logits: torch.Tensor, target: torch.Tensor,
+                                   consistency_function: str = 'abs_diff_true', threshold: float = 0.5):
+    logits, target = rearrange(logits, 'b t c h w -> t b c h w'), rearrange(target, 'b t c h w -> t b c h w')
+
+    prob = torch.sigmoid(logits)
+    pred = (prob > threshold).to(torch.float32)
+    valid_mask_sum = torch.tensor([0.0], dtype=torch.float32, device=pred.device)
+    inconsistencies_sum = torch.tensor([0.0], dtype=torch.float32, device=pred.device)
+
+    for t in range(pred.shape[0] - 1):
+        gt1 = target[t]
+        gt2 = target[t + 1]
+        cons_gt = (gt1 == gt2).to(torch.float32)
+
+        if consistency_function == 'abs_diff':
+            diff_pred = torch.abs(pred[t] - pred[t + 1]).sum(dim=1)
+        elif consistency_function == 'sq_diff':
+            diff_pred = torch.pow(pred[t] - pred[t + 1], 2)
+            diff_pred = diff_pred.sum(dim=1)
+        elif consistency_function == 'abs_diff_true':
+            pred1 = pred[t]
+            pred2 = pred[t + 1]
+            # semantic prediction has to be correct for at least one timestamp (t1 or t2)
+            right_pred_mask = torch.logical_or((pred1 == gt1), (pred2 == gt2)).to(torch.float32)
+            diff_pred = torch.abs(prob[t] - prob[t + 1]) * right_pred_mask
+        elif consistency_function == 'sq_diff_true':
+            pred1 = pred[t]
+            pred2 = pred[t + 1]
+            right_pred_mask = torch.logical_or((pred1 == gt1), (pred2 == gt2))
+            diff_pred = torch.pow(prob[t] - prob[t + 1], 2) * right_pred_mask
+        else:
+            raise Exception('unkown consistency function')
+
+        inconsistencies = diff_pred * cons_gt
+        inconsistencies_sum += inconsistencies.sum()
+        valid_mask_sum += cons_gt.sum()
+
+    return inconsistencies_sum / valid_mask_sum
