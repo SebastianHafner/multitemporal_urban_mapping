@@ -145,11 +145,10 @@ if __name__ == '__main__':
             'metric': {'goal': 'maximize', 'name': 'best val f1'},
             'parameters':
                 {
-                    'lr': {'values': [0.0001, 0.00005, 0.00001]},
+                    'lr': {'values': [0.0001]},
                     'batch_size': {'values': [4]},
+                    'cons_lambda': {'values': [0.01, 0.1]},
                     'cons_loss_type': {'values': ['ConsLoss', 'UnsupConsLoss']},
-                    'cons_lambda': {'values': [0.01, 0.1, 1, 10, 100]}
-
                 }
         }
 
