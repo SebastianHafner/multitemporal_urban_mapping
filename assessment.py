@@ -1,12 +1,11 @@
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
-from array2gif import write_gif
 from moviepy.editor import ImageSequenceClip
-from tqdm import tqdm
 from pathlib import Path
 import cv2
-from utils import experiment_manager, networks, datasets, parsers, evaluation
+from utils import experiment_manager, datasets, parsers, evaluation
+from models import model_factory
 FONTSIZE = 16
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -153,7 +152,7 @@ def qualitative_tc_gif(cfg: experiment_manager.CfgNode, run_type: str = 'test'):
 
 def qualitative_tc_gif_colored(cfg: experiment_manager.CfgNode, run_type: str = 'test'):
     print(cfg.NAME)
-    net, *_ = networks.load_checkpoint(cfg, device)
+    net, *_ = model_factory.load_checkpoint(cfg, device)
     net.eval()
 
     aoi_ids = get_aoi_ids(run_type)
@@ -166,7 +165,7 @@ def qualitative_tc_gif_colored(cfg: experiment_manager.CfgNode, run_type: str = 
         img_unit = 1024
         fps = 1
         frame_size = (img_unit, 3 * img_unit)
-        n_frames = cfg.DATALOADER.EVAL_TIMESERIES_LENGTH
+        n_frames = cfg.DATALOADER.TIMESERIES_LENGTH
 
         gif_file = Path(cfg.PATHS.OUTPUT) / 'assessment' / 'gifs' / f'gif_{aoi_id}_{cfg.NAME}.gif'
         frames = (np.random.rand(n_frames, *frame_size, 3) * 255).astype(np.uint8)
