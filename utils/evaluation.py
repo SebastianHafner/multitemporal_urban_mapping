@@ -146,7 +146,7 @@ def oa(tp: int, fp: int, fn: int, tn: int) -> float:
     return (tp + tn) / (tp + tn + fp + fn + EPS)
 
 
-def iou_tensors(y: torch.Tensor, y_hat: torch.Tensor) -> torch.tensor:
+def iou_tensors(y: torch.Tensor, y_hat: torch.Tensor) -> torch.Tensor:
     tp = torch.sum(y & y_hat).float()
     fp = torch.sum(y_hat & ~y).float()
     fn = torch.sum(~y_hat & y).float()
@@ -159,7 +159,7 @@ def unsupervised_tc(y_hat: torch.Tensor) -> float:
     T = y_hat.size(1)
     sum_tc = 0
     for t in range(1, T):
-        sum_tc += iou_tensors(y_hat[:, t - 1], y_hat[:, t])
+        sum_tc += iou_tensors(y_hat[:, t - 1], y_hat[:, t]).cpu().item()
     return (1 / (T - 1)) * sum_tc
 
 
