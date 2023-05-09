@@ -1,0 +1,11 @@
+_BASE_: "base.yaml"
+
+TRAINER:
+  LAMBDA: 0.1
+
+MODEL:
+  CONS_LOSS_TYPE: 'ConsLoss'
+  TYPE: 'unetformer'
+  TRANSFORMER: True
+  TRANSFORMER_PARAMS:
+    N_HEADS: 2
