@@ -11,6 +11,8 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def create_network(cfg):
     if cfg.MODEL.TYPE == 'unet':
         net = unet.UNet(cfg)
+    elif cfg.MODEL.TYPE == 'lunetsmall':
+        net = lunet.LUNetSmall(cfg)
     elif cfg.MODEL.TYPE == 'lunet':
         net = lunet.LUNet(cfg)
     elif cfg.MODEL.TYPE == 'segmenter':
