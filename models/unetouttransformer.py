@@ -139,7 +139,10 @@ class MultiTaskUNetOutTransformer(nn.Module):
             out_ch.append(self.outc_ch(features_ch))
         out_ch = einops.rearrange(torch.stack(out_ch), 't b c h w -> b t c h w')
 
-        return out_sem, out_ch
+        if self.training:
+            return out_sem, out_ch
+        else:
+            return out_sem
 
 
 class UNetOutTransformerSingleSeg(nn.Module):
@@ -208,4 +211,7 @@ class UNetOutTransformerSingleSeg(nn.Module):
             out_ch.append(self.outc_ch(features_ch))
         out_ch = einops.rearrange(torch.stack(out_ch), 't b c h w -> b t c h w')
 
-        return out_sem, out_ch
+        if self.training:
+            return out_sem, out_ch
+        else:
+            return out_sem

@@ -101,7 +101,6 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
 
         with torch.no_grad():
             logits = net(x)
-            logits[:, 1:] if cfg.MODEL.TYPE == 'change' else logits
 
         y = item['y'].to(device)
         y_hat = torch.sigmoid(logits)
