@@ -154,18 +154,18 @@ class LUNet(nn.Module):
         for t in range(T):
             s_t = self.decoder(x1[t], x2[t], x3[t], x4[t], x5[t])
             sout[t] = s_t
-
+        sout = einops.rearrange(sout, 't b c h w -> b t c h w')
         return sout
 
     def decoder(self, x1: torch.Tensor, x2: torch.Tensor, x3: torch.Tensor, x4: torch.Tensor,
                 x5: torch.Tensor) -> torch.Tensor:
-        s5 = self.Up3(x5)
+        s5 = self.Up5(x5)
         s5 = torch.cat((s5, x4), dim=1)
-        s5 = self.Up_conv3(s5)
+        s5 = self.Up_conv5(s5)
 
-        s4 = self.Up3(s5)
+        s4 = self.Up4(s5)
         s4 = torch.cat((s4, x3), dim=1)
-        s4 = self.Up_conv3(s4)
+        s4 = self.Up_conv4(s4)
 
         s3 = self.Up3(s4)
         s3 = torch.cat((s3, x2), dim=1)
