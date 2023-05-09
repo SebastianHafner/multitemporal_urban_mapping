@@ -27,6 +27,8 @@ def create_network(cfg):
         net = spatiotemporalsegmenter.SpatioTemporalSegmenter(cfg)
     elif cfg.MODEL.TYPE == 'unetouttransformer':
         net = unetouttransformer.UNetOutTransformer(cfg)
+    elif cfg.MODEL.TYPE == 'unetouttransformermultitask':
+        net = unetouttransformer.MultiTaskUNetOutTransformer(cfg)
     elif cfg.MODEL.TYPE == 'unetformer':
         net = unetformer.UNetFormer(cfg)
     else:

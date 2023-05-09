@@ -18,7 +18,8 @@ def run_training(cfg: experiment_manager.CfgNode):
     net.to(device)
     optimizer = optim.AdamW(net.parameters(), lr=cfg.TRAINER.LR, weight_decay=0.01)
 
-    criterion = loss_factory.get_criterion(cfg.MODEL.LOSS_TYPE)
+    criterion_seg = loss_factory.get_criterion(cfg.MODEL.LOSS_TYPE)
+    criterion_tc = loss_factory.get_criterion(cfg.MODEL.CONS_LOSS_TYPE)
 
     # reset the generators
     dataset = datasets.TrainDataset(cfg=cfg, run_type='train')
@@ -49,7 +50,7 @@ def run_training(cfg: experiment_manager.CfgNode):
         print(f'Starting epoch {epoch}/{epochs}.')
 
         start = timeit.default_timer()
-        loss_set = []
+        loss_set, loss_seg_set, loss_tc_set = [], [], []
 
         for i, batch in enumerate(dataloader):
 
@@ -58,15 +59,21 @@ def run_training(cfg: experiment_manager.CfgNode):
 
             x = batch['x'].to(device)
             logits = net(x)
-            logits = logits[:, 1:] if cfg.MODEL.TASK == 'change' else logits
 
             y = batch['y'].to(device)
+            loss_seg = criterion_seg(logits, y)
 
-            loss = criterion(logits, y)
+            loss_tc = torch.tensor([0.0], dtype=torch.float32, device=device)
+            if cfg.TRAINER.LAMBDA != 0:
+                loss_tc = cfg.TRAINER.LAMBDA * criterion_tc(logits, y)
+            loss = loss_seg + loss_tc
+
+            loss_seg_set.append(loss_seg.item())
+            loss_tc_set.append(loss_tc.item())
+            loss_set.append(loss.item())
+
             loss.backward()
             optimizer.step()
-
-            loss_set.append(loss.item())
 
             global_step += 1
             epoch_float = global_step / steps_per_epoch
@@ -78,12 +85,14 @@ def run_training(cfg: experiment_manager.CfgNode):
                 time = timeit.default_timer() - start
                 wandb.log({
                     'loss': np.mean(loss_set),
+                    'loss_seg': np.mean(loss_seg_set),
+                    'loss_tc': np.mean(loss_tc_set) if len(loss_tc_set) > 0 else 0,
                     'time': time,
                     'step': global_step,
                     'epoch': epoch_float,
                 })
                 start = timeit.default_timer()
-                loss_set = []
+                loss_set, loss_seg_set, loss_tc_set = [], [], []
             # end of batch
 
         assert (epoch == epoch_float)

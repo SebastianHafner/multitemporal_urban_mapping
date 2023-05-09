@@ -13,7 +13,6 @@ class AbstractSpaceNet7Dataset(torch.utils.data.Dataset):
         super().__init__()
         self.cfg = cfg
         self.root_path = Path(cfg.PATHS.DATASET)
-        self.task = cfg.MODEL.TASK
 
         self.include_alpha = cfg.DATALOADER.INCLUDE_ALPHA
         self.pad = cfg.DATALOADER.PAD_BORDERS
@@ -80,6 +79,7 @@ class TrainDataset(AbstractSpaceNet7Dataset):
         super().__init__(cfg)
 
         self.T = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.include_change_label = cfg.DATALOADER.INCLUDE_CHANGE_LABEL
 
         # handling transformations of data
         self.no_augmentations = no_augmentations
@@ -115,19 +115,7 @@ class TrainDataset(AbstractSpaceNet7Dataset):
         timestamps = sorted([timestamps[t] for t in t_values], key=lambda ts: int(ts['year']) * 12 + int(ts['month']))
 
         images = [self.load_planet_mosaic(aoi_id, ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
-        if self.task == 'segmentation':
-            labels = [self.load_building_label(aoi_id, ts['year'], ts['month']) for ts in timestamps]
-        elif self.task == 'change':
-            labels = []
-            ts1 = timestamps[0]
-            for t in range(1, len(timestamps)):
-                ts2 = timestamps[t]
-                change_label = self.load_change_label(aoi_id, ts1['year'], ts1['month'], ts2['year'], ts2['month'])
-                labels.append(change_label)
-        elif self.task == 'both':
-            labels = []
-        else:
-            raise Exception('Unknown label type')
+        labels = [self.load_building_label(aoi_id, ts['year'], ts['month']) for ts in timestamps]
 
         images, labels = self.transform((np.stack(images), np.stack(labels)))
 
@@ -137,6 +125,12 @@ class TrainDataset(AbstractSpaceNet7Dataset):
             'aoi_id': aoi_id,
             'dates': [(int(ts['year']), int(ts['month'])) for ts in timestamps],
         }
+
+        if self.include_change_label:
+            labels_ch = []
+            for t in range(1, len(timestamps)):
+                labels_ch.append(~torch.eq(labels[t], labels[t - 1]))
+            item['y_ch'] = torch.stack(labels_ch)
 
         return item
 
@@ -153,6 +147,7 @@ class EvalDataset(AbstractSpaceNet7Dataset):
         super().__init__(cfg)
 
         self.T = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.include_change_label = cfg.DATALOADER.INCLUDE_CHANGE_LABEL
         self.tiling = tiling
 
         # handling transformations of data
@@ -197,19 +192,7 @@ class EvalDataset(AbstractSpaceNet7Dataset):
 
         images = [self.load_planet_mosaic(ts['aoi_id'], ts['dataset'], ts['year'], ts['month']) for ts in timestamps]
         images = np.stack(images)[:, i:i + self.tiling, j:j + self.tiling]
-
-        if self.task == 'segmentation':
-            labels = [self.load_building_label(aoi_id, ts['year'], ts['month']) for ts in timestamps]
-        elif self.task == 'change':
-            labels = []
-            for t in range(1, len(timestamps)):
-                ts1, ts2 = timestamps[t - 1], timestamps[t]
-                change_label = self.load_change_label(aoi_id, ts1['year'], ts1['month'], ts2['year'], ts2['month'])
-                labels.append(change_label)
-        elif self.task == 'both':
-            labels = []
-        else:
-            raise Exception('Unknown label type')
+        labels = [self.load_building_label(aoi_id, ts['year'], ts['month']) for ts in timestamps]
         labels = np.stack(labels)[:, i:i + self.tiling, j:j + self.tiling]
 
         images, labels = self.transform((images, labels))
@@ -222,6 +205,12 @@ class EvalDataset(AbstractSpaceNet7Dataset):
             'j': j,
             'dates': [(int(ts['year']), int(ts['month'])) for ts in timestamps],
         }
+
+        if self.include_change_label:
+            labels_ch = []
+            for t in range(1, len(timestamps)):
+                labels_ch.append(~torch.eq(labels[t], labels[t - 1]))
+            item['y_ch'] = torch.stack(labels_ch)
 
         return item
 

@@ -49,7 +49,7 @@ def run_training(cfg: experiment_manager.CfgNode):
         print(f'Starting epoch {epoch}/{epochs}.')
 
         start = timeit.default_timer()
-        loss_set = []
+        loss_sem_set, loss_ch_set, loss_set = [], [], []
 
         for i, batch in enumerate(dataloader):
 
@@ -57,17 +57,20 @@ def run_training(cfg: experiment_manager.CfgNode):
             optimizer.zero_grad()
 
             x = batch['x'].to(device)
-            logits = net(x)
+            logits_sem, logits_ch = net(x)
 
             y = batch['y'].to(device)
-            if cfg.MODEL.LOSS_TYPE == 'CrossEntropyLoss':
-                logits = logits.flatten(start_dim=0, end_dim=1)
-                y = y.flatten(start_dim=0, end_dim=1)[:, 0].long()
+            loss_sem = criterion(logits_sem, y)
 
-            loss = criterion(logits, y)
+            y_ch = batch['y_ch'].to(device)
+            loss_ch = criterion(logits_ch, y_ch)
+
+            loss = loss_sem + loss_ch
             loss.backward()
             optimizer.step()
 
+            loss_sem_set.append(loss_sem.item())
+            loss_ch_set.append(loss_ch.item())
             loss_set.append(loss.item())
 
             global_step += 1
@@ -79,13 +82,15 @@ def run_training(cfg: experiment_manager.CfgNode):
                 # logging
                 time = timeit.default_timer() - start
                 wandb.log({
+                    'loss_sem': np.mean(loss_sem_set),
+                    'loss_ch': np.mean(loss_ch_set),
                     'loss': np.mean(loss_set),
                     'time': time,
                     'step': global_step,
                     'epoch': epoch_float,
                 })
                 start = timeit.default_timer()
-                loss_set = []
+                loss_sem_set, loss_ch_set, loss_set = [], [], []
             # end of batch
 
         assert (epoch == epoch_float)
