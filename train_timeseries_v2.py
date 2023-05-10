@@ -9,18 +9,16 @@ from torch.utils import data as torch_data
 import wandb
 import numpy as np
 
-from utils.experiment_manager import CfgNode
 from utils import datasets, loss_factory, evaluation, experiment_manager, parsers
 from models import model_factory
 
 
-def run_training(cfg: CfgNode):
+def run_training(cfg: experiment_manager.CfgNode):
     net = model_factory.create_network(cfg)
     net.to(device)
     optimizer = optim.AdamW(net.parameters(), lr=cfg.TRAINER.LR, weight_decay=0.01)
 
-    criterion_seg = loss_factory.get_criterion(cfg.MODEL.LOSS_TYPE)
-    criterion_tc = loss_factory.get_criterion(cfg.MODEL.CONS_LOSS_TYPE)
+    criterion = loss_factory.get_criterion(cfg.MODEL.LOSS_TYPE)
 
     # reset the generators
     dataset = datasets.TrainDataset(cfg=cfg, run_type='train')
@@ -51,27 +49,29 @@ def run_training(cfg: CfgNode):
         print(f'Starting epoch {epoch}/{epochs}.')
 
         start = timeit.default_timer()
-        loss_set, loss_seg_set, loss_tc_set = [], [], []
+        loss_sem_set, loss_ch_set, loss_set = [], [], []
 
         for i, batch in enumerate(dataloader):
+
             net.train()
             optimizer.zero_grad()
 
             x = batch['x'].to(device)
-            logits = net(x)
+            logits_sem, logits_ch = net(x)
 
             y = batch['y'].to(device)
-            loss_seg = criterion_seg(logits, y)
-            loss_tc = cfg.TRAINER.LAMBDA * criterion_tc(logits, y)
+            loss_sem = criterion(logits_sem, y)
 
-            loss = loss_seg + loss_tc
+            y_ch = batch['y_ch'].to(device)
+            loss_ch = criterion(logits_ch, y_ch)
 
+            loss = loss_sem + loss_ch
             loss.backward()
             optimizer.step()
 
+            loss_sem_set.append(loss_sem.item())
+            loss_ch_set.append(loss_ch.item())
             loss_set.append(loss.item())
-            loss_seg_set.append(loss_seg.item())
-            loss_tc_set.append(loss_tc.item())
 
             global_step += 1
             epoch_float = global_step / steps_per_epoch
@@ -82,15 +82,15 @@ def run_training(cfg: CfgNode):
                 # logging
                 time = timeit.default_timer() - start
                 wandb.log({
+                    'loss_sem': np.mean(loss_sem_set),
+                    'loss_ch': np.mean(loss_ch_set),
                     'loss': np.mean(loss_set),
-                    'loss_seg': np.mean(loss_seg_set),
-                    'loss_tc': np.mean(loss_tc_set),
                     'time': time,
                     'step': global_step,
                     'epoch': epoch_float,
                 })
                 start = timeit.default_timer()
-                loss_set, loss_seg_set, loss_tc_set = [], [], []
+                loss_sem_set, loss_ch_set, loss_set = [], [], []
             # end of batch
 
         assert (epoch == epoch_float)
