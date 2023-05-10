@@ -60,7 +60,10 @@ def run_training(cfg: experiment_manager.CfgNode):
             logits_sem, logits_ch = net(x)
 
             y = batch['y'].to(device)
-            loss_sem = criterion(logits_sem, y)
+            if cfg.MODEL.MAP_FROM_CHANGES:
+                loss_sem = criterion(logits_sem[:, -1], y[:, -1])
+            else:
+                loss_sem = criterion(logits_sem, y)
 
             y_ch = batch['y_ch'].to(device)
             loss_ch = criterion(logits_ch, y_ch)

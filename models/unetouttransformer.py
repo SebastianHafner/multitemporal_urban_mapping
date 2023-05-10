@@ -98,6 +98,7 @@ class MultiTaskUNetOutTransformer(nn.Module):
         self.outc = blocks.OutConv(self.topology[0], self.d_out)
 
         self.outc_ch = blocks.OutConv(self.topology[0] * 2, self.d_out)
+        self.map_from_changes = cfg.MODEL.MAP_FROM_CHANGES
 
         # positional encoding
         self.register_buffer('positional_encodings', get_positional_encodings(self.t, self.d_model),
@@ -139,7 +140,17 @@ class MultiTaskUNetOutTransformer(nn.Module):
             out_ch.append(self.outc_ch(features_ch))
         out_ch = einops.rearrange(torch.stack(out_ch), 't b c h w -> b t c h w')
 
-        if self.training:
+        if self.map_from_changes or self.training:
             return out_sem, out_ch
         else:
             return out_sem
+
+    def continuous_mapping_from_logits(self, logits_sem: torch.Tensor, logits_ch: torch.Tensor,
+                                       threshold: float = 0.5) -> torch.Tensor:
+        assert self.map_from_changes
+        y_hat_sem, y_hat_ch = torch.sigmoid(logits_sem) > threshold, torch.sigmoid(logits_ch) > threshold
+        T = logits_sem.size(1)
+        for t in range(T - 2, -1, -1):
+            y_hat_sem[:, t] = y_hat_sem[:, t + 1]
+            y_hat_sem[:, t][y_hat_ch[:, t]] = False
+        return y_hat_sem.float()

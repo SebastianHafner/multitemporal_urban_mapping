@@ -100,11 +100,14 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
         x = item['x'].to(device)
 
         with torch.no_grad():
-            logits = net(x)
+            if cfg.MODEL.MAP_FROM_CHANGES:
+                logits_sem, logits_ch = net(x)
+                y_hat = net.module.continuous_mapping_from_logits(logits_sem, logits_ch)
+            else:
+                logits = net(x)
+                y_hat = torch.sigmoid(logits)
 
         y = item['y'].to(device)
-        y_hat = torch.sigmoid(logits)
-
         m.add_sample(y, y_hat.detach())
 
     f1_csem = f1_score(m.TP_csem, m.FP_csem, m.FN_csem)
