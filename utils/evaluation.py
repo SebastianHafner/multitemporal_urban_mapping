@@ -188,7 +188,7 @@ def model_evaluation_ch(net, cfg, device, run_type: str, epoch: float, step: int
         y_hat_ch = torch.sigmoid(logits_ch)
 
         y_ch = item['y_ch'].to(device)
-        m.add_sample(y_ch, y_hat_ch.detach(), net.change_method)
+        m.add_sample(y_ch, y_hat_ch.detach(), net.module.change_method)
 
     if net.change_method == 'bitemporal':
         f1_cch = f1_score(m.TP_cch, m.FP_cch, m.FN_cch)
