@@ -80,6 +80,7 @@ class TrainDataset(AbstractSpaceNet7Dataset):
 
         self.T = cfg.DATALOADER.TIMESERIES_LENGTH
         self.include_change_label = cfg.DATALOADER.INCLUDE_CHANGE_LABEL
+        self.adjacent_changes = cfg.MODEL.ADJACENT_CHANGES
 
         # handling transformations of data
         self.no_augmentations = no_augmentations
@@ -128,8 +129,11 @@ class TrainDataset(AbstractSpaceNet7Dataset):
 
         if self.include_change_label:
             labels_ch = []
-            for t in range(1, len(timestamps)):
-                labels_ch.append(~torch.eq(labels[t], labels[t - 1]))
+            for t in range(len(timestamps) - 1):
+                if self.adjacent_changes:
+                    labels_ch.append(~torch.eq(labels[t + 1], labels[t]))
+                else:
+                    labels_ch.append(~torch.eq(labels[-1], labels[t]))
             item['y_ch'] = torch.stack(labels_ch)
 
         return item
@@ -148,6 +152,7 @@ class EvalDataset(AbstractSpaceNet7Dataset):
 
         self.T = cfg.DATALOADER.TIMESERIES_LENGTH
         self.include_change_label = cfg.DATALOADER.INCLUDE_CHANGE_LABEL
+        self.adjacent_changes = cfg.MODEL.ADJACENT_CHANGES
         self.tiling = tiling
 
         # handling transformations of data
@@ -208,8 +213,11 @@ class EvalDataset(AbstractSpaceNet7Dataset):
 
         if self.include_change_label:
             labels_ch = []
-            for t in range(1, len(timestamps)):
-                labels_ch.append(~torch.eq(labels[t], labels[t - 1]))
+            for t in range(len(timestamps) - 1):
+                if self.adjacent_changes:
+                    labels_ch.append(~torch.eq(labels[t + 1], labels[t]))
+                else:
+                    labels_ch.append(~torch.eq(labels[-1], labels[t]))
             item['y_ch'] = torch.stack(labels_ch)
 
         return item

@@ -12,8 +12,12 @@ def compose_transformations(cfg, no_augmentations: bool):
     # cropping
     if cfg.AUGMENTATION.IMAGE_OVERSAMPLING_TYPE == 'none':
         transformations.append(UniformCrop(cfg.AUGMENTATION.CROP_SIZE))
+    elif cfg.AUGMENTATION.IMAGE_OVERSAMPLING_TYPE == 'change':
+        transformations.append(ImportanceRandomCrop(cfg.AUGMENTATION.CROP_SIZE, 'change'))
+    elif cfg.AUGMENTATION.IMAGE_OVERSAMPLING_TYPE == 'semantic':
+        transformations.append(ImportanceRandomCrop(cfg.AUGMENTATION.CROP_SIZE, 'semantic'))
     else:
-        transformations.append(ImportanceRandomCrop(cfg.AUGMENTATION.CROP_SIZE))
+        raise Exception('Unkown oversampling type!')
 
     if cfg.AUGMENTATION.RANDOM_FLIP:
         transformations.append(RandomFlip())
@@ -97,7 +101,7 @@ class GammaCorrection(object):
 
 # Performs uniform cropping on images
 class UniformCrop(object):
-    def __init__(self, crop_size):
+    def __init__(self, crop_size: int):
         self.crop_size = crop_size
 
     def random_crop(self, args):
@@ -118,13 +122,26 @@ class UniformCrop(object):
 
 
 class ImportanceRandomCrop(UniformCrop):
+    def __init__(self, crop_size: int, oversampling_type: str):
+        super().__init__(crop_size)
+        self.oversampling_type = oversampling_type
+
     def __call__(self, args):
 
         sample_size = 20
         balancing_factor = 5
 
         random_crops = [self.random_crop(args) for _ in range(sample_size)]
-        crop_weights = np.array([crop_label.sum() for _, crop_label in random_crops]) + balancing_factor
+
+        if self.oversampling_type == 'change':
+            crop_weights = np.array(
+                [np.not_equal(crop_label[-1], crop_label[0]).sum() for _, crop_label in random_crops]
+            ) + balancing_factor
+        elif self.oversampling_type == 'semantic':
+            crop_weights = np.array([crop_label.sum() for _, crop_label in random_crops]) + balancing_factor
+        else:
+            raise Exception('Unkown oversampling type!')
+
         crop_weights = crop_weights / crop_weights.sum()
 
         sample_idx = np.random.choice(sample_size, p=crop_weights)

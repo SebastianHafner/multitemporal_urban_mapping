@@ -33,6 +33,8 @@ def create_network(cfg):
         net = unetouttransformer.MultiTaskUNetOutTransformer(cfg)
     elif cfg.MODEL.TYPE == 'unetformer':
         net = unetformer.UNetFormer(cfg)
+    elif cfg.MODEL.TYPE == 'unetformermultitask':
+        net = unetformer.MultiTaskUNetFormer(cfg)
     else:
         raise Exception(f'Unknown network ({cfg.MODEL.TYPE}).')
     return nn.DataParallel(net)

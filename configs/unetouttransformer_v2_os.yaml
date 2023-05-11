@@ -1,0 +1,14 @@
+_BASE_: "base.yaml"
+
+MODEL:
+  TYPE: 'unetouttransformermultitask'
+  TRANSFORMER: True
+  TRANSFORMER_PARAMS:
+    N_HEADS: 2
+  MAP_FROM_CHANGES: True
+
+DATALOADER:
+  INCLUDE_CHANGE_LABEL: True
+
+AUGMENTATION:
+  IMAGE_OVERSAMPLING_TYPE: 'change'

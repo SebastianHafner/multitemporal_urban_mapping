@@ -96,9 +96,9 @@ class MultiTaskUNetOutTransformer(nn.Module):
         self.encoder = unet.Encoder(cfg)
         self.decoder = unet.Decoder(cfg)
         self.outc = blocks.OutConv(self.topology[0], self.d_out)
-
         self.outc_ch = blocks.OutConv(self.topology[0] * 2, self.d_out)
         self.map_from_changes = cfg.MODEL.MAP_FROM_CHANGES
+        self.adjacent_changes = cfg.MODEL.ADJACENT_CHANGES
 
         # positional encoding
         self.register_buffer('positional_encodings', get_positional_encodings(self.t, self.d_model),
@@ -135,8 +135,11 @@ class MultiTaskUNetOutTransformer(nn.Module):
 
         # urban change detection
         out_ch = []
-        for t in range(1, T):
-            features_ch = torch.concat((features[:, t], features[:, t - 1]), dim=1)
+        for t in range(T - 1):
+            if self.adjacent_changes:
+                features_ch = torch.concat((features[:, t + 1], features[:, t]), dim=1)
+            else:
+                features_ch = torch.concat((features[:, -1], features[:, t]), dim=1)
             out_ch.append(self.outc_ch(features_ch))
         out_ch = einops.rearrange(torch.stack(out_ch), 't b c h w -> b t c h w')
 
@@ -151,6 +154,6 @@ class MultiTaskUNetOutTransformer(nn.Module):
         y_hat_sem, y_hat_ch = torch.sigmoid(logits_sem) > threshold, torch.sigmoid(logits_ch) > threshold
         T = logits_sem.size(1)
         for t in range(T - 2, -1, -1):
-            y_hat_sem[:, t] = y_hat_sem[:, t + 1]
+            y_hat_sem[:, t] = y_hat_sem[:, t + 1] if self.adjacent_changes else y_hat_sem[:, -1]
             y_hat_sem[:, t][y_hat_ch[:, t]] = False
         return y_hat_sem.float()

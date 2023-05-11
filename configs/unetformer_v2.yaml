@@ -1,0 +1,11 @@
+_BASE_: "base.yaml"
+
+MODEL:
+  TYPE: 'unetformermultitask'
+  TRANSFORMER: True
+  TRANSFORMER_PARAMS:
+    N_HEADS: 2
+  MAP_FROM_CHANGES: True
+
+DATALOADER:
+  INCLUDE_CHANGE_LABEL: True
