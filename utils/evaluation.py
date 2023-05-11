@@ -156,6 +156,7 @@ class ChangeMeasurer(object):
             self.FP_flch += torch.sum(y_hat_ch & ~y_ch).float()
             self.FN_flch += torch.sum(~y_hat_ch & y_ch).float()
         elif change_method == 'timeseries':
+            y_ch = torch.sum(y_ch, dim=1) > 0
             self.TP_flch += torch.sum(y_ch & y_hat_ch).float()
             self.TN_flch += torch.sum(~y_ch & ~y_hat_ch).float()
             self.FP_flch += torch.sum(y_hat_ch & ~y_ch).float()
@@ -190,7 +191,7 @@ def model_evaluation_ch(net, cfg, device, run_type: str, epoch: float, step: int
         y_ch = item['y_ch'].to(device)
         m.add_sample(y_ch, y_hat_ch.detach(), net.module.change_method)
 
-    if net.change_method == 'bitemporal':
+    if net.module.change_method == 'bitemporal':
         f1_cch = f1_score(m.TP_cch, m.FP_cch, m.FN_cch)
         wandb.log({
             f'{run_type} f1 cch': f1_cch,
@@ -198,7 +199,7 @@ def model_evaluation_ch(net, cfg, device, run_type: str, epoch: float, step: int
             'step': step, 'epoch': epoch,
         })
         return f1_cch
-    elif net.change_method == 'timeseries':
+    elif net.module.change_method == 'timeseries':
         f1_flch = f1_score(m.TP_flch, m.FP_flch, m.FN_flch)
         wandb.log({
             f'{run_type} f1 flch': f1_flch,

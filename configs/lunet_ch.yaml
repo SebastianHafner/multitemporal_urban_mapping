@@ -1,0 +1,10 @@
+_BASE_: "base.yaml"
+
+MODEL:
+  TYPE: 'lunet_ch'
+
+DATALOADER:
+  INCLUDE_CHANGE_LABEL: True
+
+AUGMENTATION:
+  IMAGE_OVERSAMPLING_TYPE: 'change'

@@ -1,4 +1,4 @@
-_BASE_: "siamdiff.yaml"
+_BASE_: "lunet_ch.yaml"
 DEBUG: True
 
 TRAINER:

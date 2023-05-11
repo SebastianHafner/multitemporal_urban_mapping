@@ -37,6 +37,8 @@ def create_network(cfg):
         net = unetformer.MultiTaskUNetFormer(cfg)
     elif cfg.MODEL.TYPE == 'siamdiffunet':
         net = change_baseline_models.SiamDiffUNet(cfg)
+    elif cfg.MODEL.TYPE == 'lunet_ch':
+        net = change_baseline_models.LUNet(cfg)
     else:
         raise Exception(f'Unknown network ({cfg.MODEL.TYPE}).')
     return nn.DataParallel(net)
