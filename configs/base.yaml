@@ -40,7 +40,7 @@ DATALOADER:
 
 AUGMENTATION:
   CROP_SIZE: 256
-  IMAGE_OVERSAMPLING_TYPE: 'none' # [none, importance]
+  IMAGE_OVERSAMPLING_TYPE: 'none' # [none, change, semantic]
   RANDOM_FLIP: True
   RANDOM_ROTATE: True
   COLOR_SHIFT: False
