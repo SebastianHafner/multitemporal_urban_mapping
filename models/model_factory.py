@@ -3,7 +3,7 @@ import torch.nn as nn
 from pathlib import Path
 from utils.experiment_manager import CfgNode
 from models import unet, lunet, segformer, segmenter, tempsegmenter, simplenet, resnet, spatiotemporalsegmenter,\
-    unetouttransformer, unetformer
+    unetouttransformer, unetformer, change_baseline_models
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -35,6 +35,8 @@ def create_network(cfg):
         net = unetformer.UNetFormer(cfg)
     elif cfg.MODEL.TYPE == 'unetformermultitask':
         net = unetformer.MultiTaskUNetFormer(cfg)
+    elif cfg.MODEL.TYPE == 'siamdiffunet':
+        net = change_baseline_models.SiamDiffUNet(cfg)
     else:
         raise Exception(f'Unknown network ({cfg.MODEL.TYPE}).')
     return nn.DataParallel(net)

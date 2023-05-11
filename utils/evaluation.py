@@ -126,6 +126,89 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
     return f1_csem
 
 
+class ChangeMeasurer(object):
+    def __init__(self, threshold: float = 0.5):
+
+        self.threshold = threshold
+
+        # urban change | cch -> continuous change | flch -> first to last change
+        self.TP_cch = self.TN_cch = self.FP_cch = self.FN_cch = 0
+        self.TP_flch = self.TN_flch = self.FP_flch = self.FN_flch = 0
+
+    def add_sample(self, y_ch: torch.Tensor, y_hat_ch: torch.Tensor, change_method: str):
+        B, T, _, H, W = y_ch.size()
+
+        y_ch = y_ch.bool()
+        y_hat_ch = y_hat_ch > self.threshold
+
+        if change_method == 'bitemporal':
+            # continuous change
+            self.TP_cch += torch.sum(y_ch & y_hat_ch).float()
+            self.TN_cch += torch.sum(~y_ch & ~y_hat_ch).float()
+            self.FP_cch += torch.sum(y_hat_ch & ~y_ch).float()
+            self.FN_cch += torch.sum(~y_hat_ch & y_ch).float()
+
+            # first last change derived from continuous change
+            y_ch = torch.sum(y_ch, dim=1) > 0
+            y_hat_ch = torch.sum(y_hat_ch, dim=1) > 0
+            self.TP_flch += torch.sum(y_ch & y_hat_ch).float()
+            self.TN_flch += torch.sum(~y_ch & ~y_hat_ch).float()
+            self.FP_flch += torch.sum(y_hat_ch & ~y_ch).float()
+            self.FN_flch += torch.sum(~y_hat_ch & y_ch).float()
+        elif change_method == 'timeseries':
+            self.TP_flch += torch.sum(y_ch & y_hat_ch).float()
+            self.TN_flch += torch.sum(~y_ch & ~y_hat_ch).float()
+            self.FP_flch += torch.sum(y_hat_ch & ~y_ch).float()
+            self.FN_flch += torch.sum(~y_hat_ch & y_ch).float()
+        else:
+            raise Exception('Unknown change method!')
+
+    def reset(self):
+        # urban change | cch -> continuous change | flch -> first to last change
+        self.TP_cch = self.TN_cch = self.FP_cch = self.FN_cch = 0
+        self.TP_flch = self.TN_flch = self.FP_flch = self.FN_flch = 0
+
+
+def model_evaluation_ch(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
+    ds = datasets.EvalDataset(cfg, run_type, tiling=cfg.AUGMENTATION.CROP_SIZE)
+
+    net.to(device)
+    net.eval()
+
+    m = ChangeMeasurer()
+
+    dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE, num_workers=0, shuffle=False,
+                                       drop_last=False)
+
+    for step, item in enumerate(dataloader):
+        x = item['x'].to(device)
+
+        with torch.no_grad():
+            logits_ch = net(x)
+        y_hat_ch = torch.sigmoid(logits_ch)
+
+        y_ch = item['y_ch'].to(device)
+        m.add_sample(y_ch, y_hat_ch.detach(), net.change_method)
+
+    if net.change_method == 'bitemporal':
+        f1_cch = f1_score(m.TP_cch, m.FP_cch, m.FN_cch)
+        wandb.log({
+            f'{run_type} f1 cch': f1_cch,
+            f'{run_type} f1 flch': f1_score(m.TP_flch, m.FP_flch, m.FN_flch),
+            'step': step, 'epoch': epoch,
+        })
+        return f1_cch
+    elif net.change_method == 'timeseries':
+        f1_flch = f1_score(m.TP_flch, m.FP_flch, m.FN_flch)
+        wandb.log({
+            f'{run_type} f1 flch': f1_flch,
+            'step': step, 'epoch': epoch,
+        })
+        return f1_flch
+    else:
+        raise Exception('Unkown change method!')
+
+
 # just a bunch of metrics
 def precision(tp: int, fp: int) -> float:
     return tp / (tp + fp + EPS)

@@ -59,12 +59,9 @@ def run_training(cfg: experiment_manager.CfgNode):
             x = batch['x'].to(device)
             logits = net(x)
 
-            y = batch['y'].to(device)
-            if cfg.MODEL.LOSS_TYPE == 'CrossEntropyLoss':
-                logits = logits.flatten(start_dim=0, end_dim=1)
-                y = y.flatten(start_dim=0, end_dim=1)[:, 0].long()
+            y = batch['y_ch'].to(device)
 
-            loss = criterion(logits[:, 1:], y)
+            loss = criterion(logits, y)
             loss.backward()
             optimizer.step()
 
@@ -91,8 +88,8 @@ def run_training(cfg: experiment_manager.CfgNode):
         assert (epoch == epoch_float)
         print(f'epoch float {epoch_float} (step {global_step}) - epoch {epoch}')
         # evaluation at the end of an epoch
-        _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
-        f1_val = evaluation.model_evaluation(net, cfg, device, 'val', epoch_float, global_step)
+        _ = evaluation.model_evaluation_ch(net, cfg, device, 'train', epoch_float, global_step)
+        f1_val = evaluation.model_evaluation_ch(net, cfg, device, 'val', epoch_float, global_step)
 
         if f1_val <= best_f1_val:
             trigger_times += 1
@@ -113,7 +110,7 @@ def run_training(cfg: experiment_manager.CfgNode):
             break
 
     net, *_ = model_factory.load_checkpoint(cfg, device)
-    _ = evaluation.model_evaluation(net, cfg, device, 'test', epoch_float, global_step)
+    _ = evaluation.model_evaluation_ch(net, cfg, device, 'test', epoch_float, global_step)
 
 
 if __name__ == '__main__':

@@ -1,4 +1,4 @@
-_BASE_: "unetformer_v2.yaml"
+_BASE_: "siamdiff.yaml"
 DEBUG: True
 
 TRAINER:
@@ -12,4 +12,4 @@ DATALOADER:
 
 AUGMENTATION:
   CROP_SIZE: 64
-  IMAGE_OVERSAMPLING_TYPE: 'change'
+  IMAGE_OVERSAMPLING_TYPE: 'none'
