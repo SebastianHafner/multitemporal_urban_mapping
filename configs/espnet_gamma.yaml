@@ -1,4 +1,0 @@
-_BASE_: "esp_net.yaml"
-
-AUGMENTATION:
-  GAMMA_CORRECTION: True

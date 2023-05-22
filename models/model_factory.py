@@ -2,8 +2,8 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 from utils.experiment_manager import CfgNode
-from models import unet, lunet, segformer, segmenter, tempsegmenter, simplenet, resnet, spatiotemporalsegmenter,\
-    unetouttransformer, unetformer, change_baseline_models
+from models import unet, lunet, segformer, segmenter, unetouttransformer, unetformer, change_baseline_models,\
+    changeformer
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -17,16 +17,8 @@ def create_network(cfg):
         net = lunet.LUNet(cfg)
     elif cfg.MODEL.TYPE == 'segmenter':
         net = segmenter.Segmenter(cfg)
-    elif cfg.MODEL.TYPE == 'tempsegmenter':
-        net = tempsegmenter.TempSegmenter(cfg)
     elif cfg.MODEL.TYPE == 'segformer':
         net = segformer.SegFormer(cfg)
-    elif cfg.MODEL.TYPE == 'simplenet':
-        net = simplenet.SimpleNet(cfg)
-    elif cfg.MODEL.TYPE == 'resnet':
-        net = resnet.ResNet(cfg)
-    elif cfg.MODEL.TYPE == 'spatiotemporalsegmenter':
-        net = spatiotemporalsegmenter.SpatioTemporalSegmenter(cfg)
     elif cfg.MODEL.TYPE == 'unetouttransformer':
         net = unetouttransformer.UNetOutTransformer(cfg)
     elif cfg.MODEL.TYPE == 'unetouttransformermultitask':
@@ -39,6 +31,8 @@ def create_network(cfg):
         net = change_baseline_models.SiamDiffUNet(cfg)
     elif cfg.MODEL.TYPE == 'lunet_ch':
         net = change_baseline_models.LUNet(cfg)
+    elif cfg.MODEL.TYPE == 'changeformer':
+        net = changeformer.ChangeFormerV6(cfg)
     else:
         raise Exception(f'Unknown network ({cfg.MODEL.TYPE}).')
     return nn.DataParallel(net)
