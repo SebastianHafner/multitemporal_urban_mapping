@@ -353,19 +353,19 @@ class MultiTaskLUNet(nn.Module):
         # mapping (only for first and last image)
         features_seg = []
         for feature in features:
-            feature = einops.rearrange(feature, '(b t) c h w -> t b c h w', t=T)
-            first_last_feature_seg = feature[[0, -1]]
-            first_last_feature_seg = einops.rearrange(first_last_feature_seg, 't b c h w -> (b t) c h w')
+            feature = einops.rearrange(feature, '(b t) c h w -> b t c h w', b=B)
+            first_last_feature_seg = feature[:, [0, -1]]
+            first_last_feature_seg = einops.rearrange(first_last_feature_seg, 'b t c h w -> (b t) c h w')
             features_seg.append(first_last_feature_seg)
 
         out_seg = self.outc_seg(self.decoder_seg(features_seg))
-        out_seg = einops.rearrange(out_seg, '(b t) c h w -> t b c h w', t=2)
-        out_seg1, out_seg2 = out_seg[0], out_seg[1]
+        out_seg = einops.rearrange(out_seg, '(b t) c h w -> b t c h w', b=B)
+        out_seg1, out_seg2 = out_seg[:, 0], out_seg[:, 1]
 
         # change detection
         features_ch = []
         for feature, lstm_block in zip(features[::-1], self.lstm_blocks):
-            feature_ch = lstm_block(einops.rearrange(feature, '(b t) c h w -> t b c h w', t=T))
+            feature_ch = lstm_block(einops.rearrange(feature, '(b t) c h w -> b t c h w', b=B))
             features_ch.append(feature_ch)
 
         out_ch = self.outc_ch(self.decoder_ch(features_ch[::-1]))
@@ -443,14 +443,14 @@ class FeatureLSTM(nn.Module):
         self.RCell = RNNCell(self.hidden_size, self.hidden_size)
 
     def forward(self, xinp: torch.Tensor):
+        B, T, *_ = xinp.size()
         h_state, c_state = (
-            Variable(torch.zeros(int(xinp[0].shape[0]), self.hidden_size, self.height, self.width)).to(device),
-            Variable(torch.zeros(int(xinp[0].shape[0]), self.hidden_size, self.height, self.width)).to(device)
+            Variable(torch.zeros(B, self.hidden_size, self.height, self.width)).to(device),
+            Variable(torch.zeros(B, self.hidden_size, self.height, self.width)).to(device)
         )
 
-        for t in range(xinp.size()[0]):
-            input_t = xinp[t]
-            h_state, c_state = self.RCell(input_t, h_state, c_state)
+        for t in range(T):
+            h_state, c_state = self.RCell(xinp[:, t], h_state, c_state)
 
         return h_state
 
