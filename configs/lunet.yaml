@@ -2,3 +2,9 @@ _BASE_: "base.yaml"
 
 MODEL:
   TYPE: 'lunet'
+
+DATALOADER:
+  INCLUDE_CHANGE_LABEL: True
+
+AUGMENTATION:
+  IMAGE_OVERSAMPLING_TYPE: 'change'

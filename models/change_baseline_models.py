@@ -311,9 +311,9 @@ class LUNetPaper(nn.Module):
         return d1
 
 
-class LUNet(nn.Module):
+class MultiTaskLUNet(nn.Module):
     def __init__(self, cfg: CfgNode):
-        super(LUNet, self).__init__()
+        super(MultiTaskLUNet, self).__init__()
 
         self.cfg = cfg
         self.img_ch = cfg.MODEL.IN_CHANNELS
@@ -337,28 +337,40 @@ class LUNet(nn.Module):
             lstm_blocks.append(FeatureLSTM(dim, patch_size, patch_size))
         self.lstm_blocks = nn.ModuleList(lstm_blocks)
 
-        self.decoder = unet.Decoder(cfg)
+        self.decoder_ch = unet.Decoder(cfg)
+        self.decoder_seg = unet.Decoder(cfg)
 
-        self.outc = blocks.OutConv(topology[0], n_classes)
+        self.outc_ch = blocks.OutConv(topology[0], n_classes)
+        self.outc_seg = blocks.OutConv(topology[0], n_classes)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> tuple:
         B, T, _, H, W = x.size()
         x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
 
         x = self.inc(x)
         features = self.encoder(x)
-        features = features[::-1]
-        change_features = []
-        for feature, lstm_block in zip(features, self.lstm_blocks):
+
+        # mapping (only for first and last image)
+        features_seg = []
+        for feature in features:
             feature = einops.rearrange(feature, '(b t) c h w -> t b c h w', t=T)
-            change_feature = lstm_block(feature)
-            change_features.append(change_feature)
+            first_last_feature_seg = feature[[0, -1]]
+            first_last_feature_seg = einops.rearrange(first_last_feature_seg, 't b c h w -> (b t) c h w')
+            features_seg.append(first_last_feature_seg)
 
-        change_features = change_features[::-1]
-        out_ch = self.decoder(change_features)
-        out_ch = self.outc(out_ch)
+        out_seg = self.outc_seg(self.decoder_seg(features_seg))
+        out_seg = einops.rearrange(out_seg, '(b t) c h w -> t b c h w', t=2)
+        out_seg1, out_seg2 = out_seg[0], out_seg[1]
 
-        return out_ch
+        # change detection
+        features_ch = []
+        for feature, lstm_block in zip(features[::-1], self.lstm_blocks):
+            feature_ch = lstm_block(einops.rearrange(feature, '(b t) c h w -> t b c h w', t=T))
+            features_ch.append(feature_ch)
+
+        out_ch = self.outc_ch(self.decoder_ch(features_ch[::-1]))
+
+        return out_ch, out_seg1, out_seg2
 
 
 class conv_block(nn.Module):
@@ -470,123 +482,6 @@ class set_values(nn.Module):
         return self.dropout(h_state), xout
 
 
-class MultiTaskLUNet(nn.Module):
-    def __init__(self, img_ch, output_ch, patch_size):
-        super(MultiTaskLUNet, self).__init__()
-
-        self.patch_size = patch_size
-        self.Maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
-
-        self.Conv1 = conv_block(ch_in=img_ch, ch_out=16)
-        self.set1 = set_values(16, self.patch_size, self.patch_size)
-
-        self.Conv2 = conv_block(ch_in=16, ch_out=32)
-        self.set2 = set_values(32, self.patch_size / 2, self.patch_size / 2)
-
-        self.Conv3 = conv_block(ch_in=32, ch_out=64)
-        self.set3 = set_values(64, self.patch_size / 4, self.patch_size / 4)
-
-        self.Conv4 = conv_block(ch_in=64, ch_out=128)
-        self.set4 = set_values(128, self.patch_size / 8, self.patch_size / 8)
-
-        self.Conv5 = conv_block(ch_in=128, ch_out=256)
-        self.set5 = set_values(256, self.patch_size / 16, self.patch_size / 16)
-
-        self.Up5 = up_conv(ch_in=256, ch_out=128)
-        self.Up_conv5 = conv_block(ch_in=256, ch_out=128)
-        self.Up5_segm = up_conv(ch_in=256, ch_out=128)
-        self.Up_conv5_segm = conv_block(ch_in=256, ch_out=128)
-
-        self.Up4 = up_conv(ch_in=128, ch_out=64)
-        self.Up_conv4 = conv_block(ch_in=128, ch_out=64)
-        self.Up4_segm = up_conv(ch_in=128, ch_out=64)
-        self.Up_conv4_segm = conv_block(ch_in=128, ch_out=64)
-
-        self.Up3 = up_conv(ch_in=64, ch_out=32)
-        self.Up_conv3 = conv_block(ch_in=64, ch_out=32)
-        self.Up3_segm = up_conv(ch_in=64, ch_out=32)
-        self.Up_conv3_segm = conv_block(ch_in=64, ch_out=32)
-
-        self.Up2 = up_conv(ch_in=32, ch_out=16)
-        self.Up_conv2 = conv_block(ch_in=32, ch_out=16)
-        self.Up2_segm = up_conv(ch_in=32, ch_out=16)
-        self.Up_conv2_segm = conv_block(ch_in=32, ch_out=16)
-
-        self.Conv_1x1 = nn.Conv2d(16, output_ch, kernel_size=1, stride=1, padding=0)
-        self.Conv_1x1_segm = nn.Conv2d(16, output_ch, kernel_size=1, stride=1, padding=0)
-
-    def encoder(self, x):
-        x1, xout = self.set1(self.Conv1, x)
-        s1 = xout[0]
-        a1 = xout[-1]
-
-        x2, xout = self.set2(nn.Sequential(self.Maxpool, self.Conv2), xout)
-        s2 = xout[0]
-        a2 = xout[-1]
-
-        x3, xout = self.set3(nn.Sequential(self.Maxpool, self.Conv3), xout)
-        s3 = xout[0]
-        a3 = xout[-1]
-
-        x4, xout = self.set4(nn.Sequential(self.Maxpool, self.Conv4), xout)
-        s4 = xout[0]
-        a4 = xout[-1]
-
-        x5, xout = self.set5(nn.Sequential(self.Maxpool, self.Conv5), xout)
-        s5 = xout[0]
-        a5 = xout[-1]
-
-        return x1, x2, x3, x4, x5, s1, s2, s3, s4, s5, a1, a2, a3, a4, a5
-
-    def decoder_lstm(self, x1, x2, x3, x4, x5):
-        d5 = self.Up5(x5)
-        d5 = torch.cat((d5, x4), dim=1)
-        d5 = self.Up_conv5(d5)
-
-        d4 = self.Up4(d5)
-        d4 = torch.cat((d4, x3), dim=1)
-        d4 = self.Up_conv4(d4)
-
-        d3 = self.Up3(d4)
-        d3 = torch.cat((d3, x2), dim=1)
-        d3 = self.Up_conv3(d3)
-
-        d2 = self.Up2(d3)
-        d2 = torch.cat((d2, x1), dim=1)
-        d2 = self.Up_conv2(d2)
-
-        d1 = self.Conv_1x1(d2)
-
-        return d1
-
-    def decoder_segm(self, s1, s2, s3, s4, s5):
-        d5 = self.Up5_segm(s5)
-        d5 = torch.cat((d5, s4), dim=1)
-        d5 = self.Up_conv5_segm(d5)
-
-        d4 = self.Up4_segm(d5)
-        d4 = torch.cat((d4, s3), dim=1)
-        d4 = self.Up_conv4_segm(d4)
-
-        d3 = self.Up3_segm(d4)
-        d3 = torch.cat((d3, s2), dim=1)
-        d3 = self.Up_conv3_segm(d3)
-
-        d2 = self.Up2_segm(d3)
-        d2 = torch.cat((d2, s1), dim=1)
-        d2 = self.Up_conv2_segm(d2)
-
-        d1 = self.Conv_1x1_segm(d2)
-
-        return d1
-
-    def forward(self, input):
-        x1, x2, x3, x4, x5, s1, s2, s3, s4, s5, a1, a2, a3, a4, a5 = self.encoder(input)
-
-        d1 = self.decoder_lstm(x1, x2, x3, x4, x5)
-        segm1 = self.decoder_segm(s1, s2, s3, s4, s5)
-        segm2 = self.decoder_segm(a1, a2, a3, a4, a5)
-        return d1, segm1, segm2
 
 
 class MultiTaskLUNetPaper(nn.Module):

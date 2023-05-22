@@ -1,7 +1,0 @@
-_BASE_: "base.yaml"
-
-TRAINER:
-  LAMBDA: 1
-
-MODEL:
-  TYPE: 'lunet'

@@ -2,8 +2,7 @@ import torch
 import torch.nn as nn
 from pathlib import Path
 from utils.experiment_manager import CfgNode
-from models import unet, lunet, segformer, segmenter, unetouttransformer, unetformer, change_baseline_models,\
-    changeformer
+from models import unet, segformer, segmenter, unetouttransformer, unetformer, change_baseline_models, changeformer
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -11,10 +10,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def create_network(cfg):
     if cfg.MODEL.TYPE == 'unet':
         net = unet.UNet(cfg)
-    elif cfg.MODEL.TYPE == 'lunetsmall':
-        net = lunet.LUNetSmall(cfg)
-    elif cfg.MODEL.TYPE == 'lunet':
-        net = lunet.LUNet(cfg)
     elif cfg.MODEL.TYPE == 'segmenter':
         net = segmenter.Segmenter(cfg)
     elif cfg.MODEL.TYPE == 'segformer':
@@ -29,8 +24,10 @@ def create_network(cfg):
         net = unetformer.MultiTaskUNetFormer(cfg)
     elif cfg.MODEL.TYPE == 'siamdiffunet':
         net = change_baseline_models.SiamDiffUNet(cfg)
-    elif cfg.MODEL.TYPE == 'lunet_ch':
+    elif cfg.MODEL.TYPE == 'lunet':
         net = change_baseline_models.LUNet(cfg)
+    elif cfg.MODEL.TYPE == 'mtlunet':
+        net = change_baseline_models.MultiTaskLUNet(cfg)
     elif cfg.MODEL.TYPE == 'changeformer':
         net = changeformer.ChangeFormerV6(cfg)
     else:

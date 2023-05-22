@@ -1,4 +1,4 @@
-_BASE_: "lunet_ch.yaml"
+_BASE_: "multitasklunet.yaml"
 DEBUG: True
 
 TRAINER:
