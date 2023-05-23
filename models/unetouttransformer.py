@@ -162,10 +162,10 @@ class MultiTaskUNetOutTransformer(nn.Module):
         return y_hat_sem.float()
 
 
-class UNetOutTransformerV3(nn.Module):
+class UNetOutTransformerV4(nn.Module):
     def __init__(self, cfg: CfgNode):
         # Super constructor
-        super(UNetOutTransformerV3, self).__init__()
+        super(UNetOutTransformerV4, self).__init__()
 
         # attributes
         self.cfg = cfg
