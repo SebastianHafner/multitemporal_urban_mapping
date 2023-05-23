@@ -103,13 +103,13 @@ def model_evaluation_multitasklunet(net, cfg, device, run_type: str, epoch: floa
         x = item['x'].to(device)
 
         with torch.no_grad():
-            logits_ch, logits_seg1, logits_seg2 = net(x)
+            logits_ch, logits_seg = net(x)
 
         y_hat_ch = torch.sigmoid(logits_ch)
-        y_hat_seg1, y_hat_seg2 = torch.sigmoid(logits_seg1), torch.sigmoid(logits_seg2)
+        y_hat_seg = torch.sigmoid(logits_seg)
 
         y = item['y'].to(device)
-        m.add_sample(y, y_hat_ch.detach(), y_hat_seg1.detach(), y_hat_seg2.detach())
+        m.add_sample(y, y_hat_ch.detach(), y_hat_seg.detach())
 
     f1_flch = metrics.f1_score(m.TP_flch, m.FP_flch, m.FN_flch)
 

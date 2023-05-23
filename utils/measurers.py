@@ -135,19 +135,18 @@ class MultiTaskLUNetMeasurer(object):
         # urban change | flch -> first to last change
         self.TP_flch = self.TN_flch = self.FP_flch = self.FN_flch = 0
 
-    def add_sample(self, y: torch.Tensor, y_hat_ch: torch.Tensor, y_hat_seg1: torch.Tensor, y_hat_seg2: torch.Tensor):
+    def add_sample(self, y: torch.Tensor, y_hat_ch: torch.Tensor, y_hat_seg: torch.Tensor):
         B, T, _, H, W = y.size()
 
         y = y.bool()
         y_hat_ch = y_hat_ch > self.threshold
+        y_hat_seg = y_hat_seg > self.threshold
 
         # urban mapping first last
-        y_seg = y[:, [0, -1]]
-        y_hat_seg = torch.concat((y_hat_seg1, y_hat_seg2), dim=1) > self.threshold
-        self.TP_flsem += torch.sum(y_seg & y_hat_seg).float()
-        self.TN_flsem += torch.sum(~y_seg & ~y_hat_seg).float()
-        self.FP_flsem += torch.sum(y_hat_seg & ~y_seg).float()
-        self.FN_flsem += torch.sum(~y_hat_seg & y_seg).float()
+        self.TP_flsem += torch.sum(y[:, [0, -1]] & y_hat_seg[:, [0, -1]]).float()
+        self.TN_flsem += torch.sum(~y[:, [0, -1]] & ~y_hat_seg[:, [0, -1]]).float()
+        self.FP_flsem += torch.sum(y_hat_seg[:, [0, -1]] & ~y[:, [0, -1]]).float()
+        self.FN_flsem += torch.sum(~y_hat_seg[:, [0, -1]] & y[:, [0, -1]]).float()
 
         # urban change first last change
         y_ch = ~torch.eq(y[:, -1], y[:, 0])

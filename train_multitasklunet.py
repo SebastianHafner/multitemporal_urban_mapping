@@ -57,20 +57,20 @@ def run_training(cfg: experiment_manager.CfgNode):
             optimizer.zero_grad()
 
             x = batch['x'].to(device)
-            logits_ch, logits_seg1, logits_seg2 = net(x)
+            logits_ch, logits_seg = net(x)
 
             y_ch = batch['y_ch'].to(device)
             y_flch = torch.sum(y_ch, dim=1) > 0
             loss_ch = criterion(logits_ch, y_flch)
 
             y = batch['y'].to(device)
-            loss_seg1 = criterion(logits_seg1, y[:, 0])
-            loss_seg2 = criterion(logits_seg2, y[:, -1])
+            loss_seg1 = criterion(logits_seg[:, 0], y[:, 0])
+            loss_seg2 = criterion(logits_seg[:, -1], y[:, -1])
 
-            logits_ch_2 = logits_seg2 - logits_seg1
+            logits_ch_2 = logits_seg[:, -1] - logits_seg[:, 0]
             loss_ch_2 = criterion(logits_ch_2, y_flch)
 
-            logits_seg2_2 = logits_seg1 + logits_ch
+            logits_seg2_2 = logits_seg[:, 0] + logits_ch
             loss_seg2_2 = criterion(logits_seg2_2, y[:, -1])
 
             # weights from paper

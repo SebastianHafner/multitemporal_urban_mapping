@@ -350,27 +350,30 @@ class MultiTaskLUNet(nn.Module):
         x = self.inc(x)
         features = self.encoder(x)
 
-        # mapping (only for first and last image)
-        features_seg = []
-        for feature in features:
-            feature = einops.rearrange(feature, '(b t) c h w -> b t c h w', b=B)
-            first_last_feature_seg = feature[:, [0, -1]]
-            first_last_feature_seg = einops.rearrange(first_last_feature_seg, 'b t c h w -> (b t) c h w')
-            features_seg.append(first_last_feature_seg)
-
-        out_seg = self.outc_seg(self.decoder_seg(features_seg))
-        out_seg = einops.rearrange(out_seg, '(b t) c h w -> b t c h w', b=B)
-        out_seg1, out_seg2 = out_seg[:, 0], out_seg[:, 1]
-
         # change detection
         features_ch = []
         for feature, lstm_block in zip(features[::-1], self.lstm_blocks):
             feature_ch = lstm_block(einops.rearrange(feature, '(b t) c h w -> b t c h w', b=B))
             features_ch.append(feature_ch)
 
-        out_ch = self.outc_ch(self.decoder_ch(features_ch[::-1]))
+        out_ch = self.decoder_ch(features_ch[::-1])
+        out_ch = self.outc_ch(out_ch)
 
-        return out_ch, out_seg1, out_seg2
+        # mapping (only for first and last image)
+        # features_seg = []
+        # for feature in features:
+        #     feature = einops.rearrange(feature, '(b t) c h w -> b t c h w', b=B)
+        #     first_last_feature_seg = feature[:, [0, -1]]
+        #     first_last_feature_seg = einops.rearrange(first_last_feature_seg, 'b t c h w -> (b t) c h w')
+        #     features_seg.append(first_last_feature_seg)
+        #
+        # out_seg = self.outc_seg(self.decoder_seg(features_seg))
+        # out_seg = einops.rearrange(out_seg, '(b t) c h w -> b t c h w', b=B)
+        # out_seg1, out_seg2 = out_seg[:, 0], out_seg[:, 1]
+        out_seg = self.outc_seg(self.decoder_seg(features))
+        out_seg = einops.rearrange(out_seg, '(b t) c h w -> b t c h w', b=B)
+
+        return out_ch, out_seg
 
 
 class conv_block(nn.Module):
