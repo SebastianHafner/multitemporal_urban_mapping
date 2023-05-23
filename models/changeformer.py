@@ -4,21 +4,11 @@ import torch.nn.functional
 import torch.nn.functional as F
 from functools import partial
 from models.ChangeFormerBaseNetworks import *
-from utils.help_funcs import TwoLayerConv2d, save_to_mat
-
-import timm
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
-import types
 import math
-from abc import ABCMeta, abstractmethod
-# from mmcv.cnn import normal_init
-# from mmcv.cnn import ConvModule
-import pdb
+import einops
 
-from scipy.io import savemat
-
-
-
+from utils.experiment_manager import CfgNode
 
 
 def icnr(x, scale=2, init=nn.init.kaiming_normal_):
@@ -72,7 +62,6 @@ class PS_UP(nn.Module):
     def forward(self, x):
         x = self.upsample(x)
         return x
-
 
 
 class EncoderTransformer(nn.Module):
@@ -1036,10 +1025,10 @@ class DecoderTransformer_v3(nn.Module):
 
 
 # ChangeFormerV6:
-class ChangeFormerV6(nn.Module):
+class ChangeFormerV6Old(nn.Module):
 
     def __init__(self, input_nc=3, output_nc=2, decoder_softmax=False, embed_dim=256):
-        super(ChangeFormerV6, self).__init__()
+        super(ChangeFormerV6Old, self).__init__()
         # Transformer Encoder
         self.embed_dims = [64, 128, 320, 512]
         self.depths = [3, 3, 4, 3]  # [3, 3, 6, 18, 3]
@@ -1075,9 +1064,59 @@ class ChangeFormerV6(nn.Module):
         return cp
 
 
+# ChangeFormerV6:
+class ChangeFormerV6(nn.Module):
+
+    def __init__(self, cfg: CfgNode):
+        super(ChangeFormerV6, self).__init__()
+
+        self.cfg = cfg
+        input_nc = cfg.MODEL.IN_CHANNELS
+        output_nc = cfg.MODEL.OUT_CHANNELS
+        self.change_method = 'bitemporal'
+
+        # Transformer Encoder
+        self.embed_dims = [64, 128, 320, 512]
+        self.depths = [3, 3, 4, 3]  # [3, 3, 6, 18, 3]
+        embed_dim = 256
+        self.embedding_dim = embed_dim
+        self.drop_rate = 0.1
+        self.attn_drop = 0.1
+        self.drop_path_rate = 0.1
+
+        self.Tenc_x2 = EncoderTransformer_v3(img_size=256, patch_size=7, in_chans=input_nc, num_classes=output_nc,
+                                             embed_dims=self.embed_dims,
+                                             num_heads=[1, 2, 4, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=True,
+                                             qk_scale=None, drop_rate=self.drop_rate,
+                                             attn_drop_rate=self.attn_drop, drop_path_rate=self.drop_path_rate,
+                                             norm_layer=partial(nn.LayerNorm, eps=1e-6),
+                                             depths=self.depths, sr_ratios=[8, 4, 2, 1])
+
+        # Transformer Decoder
+        self.TDec_x2 = DecoderTransformer_v3(input_transform='multiple_select', in_index=[0, 1, 2, 3],
+                                             align_corners=False,
+                                             in_channels=self.embed_dims, embedding_dim=self.embedding_dim,
+                                             output_nc=output_nc,
+                                             decoder_softmax=False, feature_strides=[2, 4, 8, 16])
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, _, H, W = x.size()
+        out_ch = []
+
+        for t in range(T - 1):
+            x1, x2 = x[:, t], x[:, t + 1]
+            [fx1, fx2] = [self.Tenc_x2(x1), self.Tenc_x2(x2)]
+            cp = self.TDec_x2(fx1, fx2)[-1]
+            out_ch.append(cp)
+
+        out_ch = torch.stack(out_ch)
+        out_ch = einops.rearrange(out_ch, 't b c h w -> b t c h w')
+        return out_ch
+
+
 if __name__ == '__main__':
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = ChangeFormerV6()
+    net = ChangeFormerV6Old()
     net.to(device)
     net.eval()
     x1 = torch.rand((1, 3, 256, 256)).to(device)

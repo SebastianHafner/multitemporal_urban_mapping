@@ -14,6 +14,8 @@ def create_network(cfg):
         net = segmenter.Segmenter(cfg)
     elif cfg.MODEL.TYPE == 'segformer':
         net = segformer.SegFormer(cfg)
+    elif cfg.MODEL.TYPE == 'changeformer':
+        net = changeformer.ChangeFormerV6(cfg)
     elif cfg.MODEL.TYPE == 'unetouttransformer':
         net = unetouttransformer.UNetOutTransformer(cfg)
     elif cfg.MODEL.TYPE == 'unetouttransformermultitask':
