@@ -1,0 +1,12 @@
+_BASE_: "base.yaml"
+
+TRAINER:
+  LAMBDA: 0.1
+
+MODEL:
+  TYPE: 'unetouttransformer'
+  DISABLE_OUTCONV: True
+  CONS_LOSS_TYPE: 'FeatureConsLoss'
+  TRANSFORMER: True
+  TRANSFORMER_PARAMS:
+    N_HEADS: 2

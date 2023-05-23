@@ -1,11 +1,8 @@
-_BASE_: "changeformer.yaml"
+_BASE_: "unetouttransformer_tcfeature.yaml"
 DEBUG: True
 
 TRAINER:
   BATCH_SIZE: 2
-
-MODEL:
-  CONS_LOSS_TYPE: 'ConsLoss'
 
 DATALOADER:
   TIMESERIES_LENGTH: 5

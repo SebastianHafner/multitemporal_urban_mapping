@@ -11,6 +11,7 @@ import numpy as np
 
 from utils import datasets, loss_factory, evaluation, experiment_manager, parsers
 from models import model_factory
+import einops
 
 
 def run_training(cfg: experiment_manager.CfgNode):
@@ -58,14 +59,20 @@ def run_training(cfg: experiment_manager.CfgNode):
             optimizer.zero_grad()
 
             x = batch['x'].to(device)
-            logits = net(x)
+            out = net(x)
 
             y = batch['y'].to(device)
+
+            if net.module.disable_outc:
+                logits = net.module.outc(einops.rearrange(out, 'b t f h w -> (b t) f h w'))
+                logits = einops.rearrange(logits, '(b t) c h w -> b t c h w', b=cfg.TRAINER.BATCH_SIZE)
+            else:
+                logits = out
             loss_seg = criterion_seg(logits, y)
 
             loss_tc = torch.tensor([0.0], dtype=torch.float32, device=device)
             if cfg.TRAINER.LAMBDA != 0:
-                loss_tc = cfg.TRAINER.LAMBDA * criterion_tc(logits, y)
+                loss_tc = cfg.TRAINER.LAMBDA * criterion_tc(out, y)
             loss = loss_seg + loss_tc
 
             loss_seg_set.append(loss_seg.item())

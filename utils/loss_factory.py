@@ -31,6 +31,10 @@ def get_criterion(loss_type, negative_weight: float = 1, positive_weight: float 
         criterion = nn.MSELoss()
     elif loss_type == 'ConsLoss':
         criterion = consistency_loss
+    elif loss_type == 'FeatureConsLoss':
+        criterion = feature_cons_loss
+    elif loss_type == 'FeatureLSTConsLoss':
+        criterion = feature_lstcons_loss
     elif loss_type == 'UnsupConsLoss':
         criterion = unsup_cons_loss
     elif loss_type == 'UnsupLSTConsLoss':
@@ -320,3 +324,41 @@ def shortlongterm_consistency_loss(logits: torch.Tensor, target: torch.Tensor,
         valid_mask_sum += cons_gt.sum()
 
     return inconsistencies_sum / valid_mask_sum
+
+
+def feature_cons_loss(features: torch.Tensor, target: torch.Tensor):
+    B, T, C, *_ = features.size()
+
+    cons_loss = torch.tensor([0.0], dtype=torch.float32, device=features.device)
+
+    for t in range(T - 1):
+        cons_target = torch.eq(target[:, t], target[:, t + 1]).to(torch.float32).squeeze()
+        feature1, feature2 = features[:, t], features[:, t + 1]
+        diff2 = torch.sum((feature2 - feature1) ** 2.0, dim=1)
+        diff2 = diff2 * cons_target
+        cons_loss += torch.sum(diff2) / (torch.sum(cons_target) * C)
+
+    return cons_loss
+
+
+def feature_lstcons_loss(features: torch.Tensor, target: torch.Tensor):
+    B, T, C, *_ = features.size()
+
+    cons_loss = torch.tensor([0.0], dtype=torch.float32, device=features.device)
+
+    feature_start, target_start = features[:, 0], target[:, 0]
+    for t in range(T - 1):
+        cons_target = torch.eq(target[:, t], target[:, t + 1]).to(torch.float32).squeeze()
+        feature1, feature2 = features[:, t], features[:, t + 1]
+        diff2 = torch.sum((feature2 - feature1) ** 2.0, dim=1)
+        diff2 = diff2 * cons_target
+        cons_loss += torch.sum(diff2) / (torch.sum(cons_target) * C)
+
+        if t > 0:
+            cons_target = torch.eq(target_start, target[:, t + 1]).to(torch.float32).squeeze()
+            feature2 = features[:, t + 1]
+            diff2 = torch.sum((feature2 - feature_start) ** 2.0, dim=1)
+            diff2 = diff2 * cons_target
+            cons_loss += torch.sum(diff2) / (torch.sum(cons_target) * C)
+
+    return cons_loss
