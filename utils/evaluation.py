@@ -120,3 +120,39 @@ def model_evaluation_multitasklunet(net, cfg, device, run_type: str, epoch: floa
     })
 
     return f1_flch
+
+
+def model_evaluation_proposed(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
+    ds = datasets.EvalDataset(cfg, run_type, tiling=cfg.AUGMENTATION.CROP_SIZE)
+
+    net.to(device)
+    net.eval()
+
+    m = measurers.MeasurerProposed()
+
+    dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE, num_workers=0, shuffle=False,
+                                       drop_last=False)
+
+    for step, item in enumerate(dataloader):
+        x = item['x'].to(device)
+
+        with torch.no_grad():
+            features = net(x)
+
+        y = item['y'].to(device)
+        m.add_sample(y, y_hat.detach())
+
+    f1_csem = metrics.f1_score(m.TP_csem, m.FP_csem, m.FN_csem)
+
+    wandb.log({
+        f'{run_type} f1': f1_csem,
+        f'{run_type} f1_flsem': metrics.f1_score(m.TP_flsem, m.FP_flsem, m.FN_flsem),
+        f'{run_type} f1 cch': metrics.f1_score(m.TP_cch, m.FP_cch, m.FN_cch),
+        f'{run_type} f1 flch': metrics.f1_score(m.TP_flch, m.FP_flch, m.FN_flch),
+        f'{run_type} unsup_tc': np.mean(m.unsup_tc_values),
+        f'{run_type} sup_tc': np.mean(m.sup_tc_values),
+        f'{run_type} sup_tc_urban': np.mean(m.sup_tc_urban_values),
+        'step': step, 'epoch': epoch,
+    })
+
+    return f1_csem

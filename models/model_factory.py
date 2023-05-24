@@ -20,6 +20,8 @@ def create_network(cfg):
         net = unetouttransformer.UNetOutTransformer(cfg)
     elif cfg.MODEL.TYPE == 'unetouttransformermultitask':
         net = unetouttransformer.MultiTaskUNetOutTransformer(cfg)
+    elif cfg.MODEL.TYPE == 'unetouttransformerv4':
+        net = unetouttransformer.UNetOutTransformerV4(cfg)
     elif cfg.MODEL.TYPE == 'unetformer':
         net = unetformer.UNetFormer(cfg)
     elif cfg.MODEL.TYPE == 'unetformermultitask':

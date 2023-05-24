@@ -1,4 +1,4 @@
-_BASE_: "multitasklunet.yaml"
+_BASE_: "unetouttransformer_v4_os.yaml"
 DEBUG: True
 
 TRAINER:
