@@ -36,6 +36,7 @@ class UNetFormer(nn.Module):
         self.encoder = unet.Encoder(cfg)
         self.decoder = unet.Decoder(cfg)
         self.outc = blocks.OutConv(self.topology[0], self.d_out)
+        self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
 
         # transformers
         transformers = []
@@ -103,6 +104,7 @@ class MultiTaskUNetFormer(nn.Module):
         self.encoder = unet.Encoder(cfg)
         self.decoder = unet.Decoder(cfg)
         self.outc = blocks.OutConv(self.topology[0], self.d_out)
+        self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
 
         self.decoder_ch = unet.Decoder(cfg)
         self.outc_ch = blocks.OutConv(self.topology[0], self.d_out)

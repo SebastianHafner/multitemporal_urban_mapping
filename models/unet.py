@@ -22,6 +22,7 @@ class UNet(nn.Module):
         self.encoder = Encoder(cfg)
         self.decoder = Decoder(cfg)
         self.outc = blocks.OutConv(topology[0], n_classes)
+        self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
 
     def forward(self, x: torch.Tensor) -> torch.tensor:
         B, T, _, H, W = x.size()
