@@ -1,7 +1,7 @@
 _BASE_: "base.yaml"
 
 MODEL:
-  TYPE: 'unetouttransformermultitask'
+  TYPE: 'unetouttransformerv4'
   TRANSFORMER: True
   TRANSFORMER_PARAMS:
     N_HEADS: 2
@@ -10,6 +10,3 @@ MODEL:
 
 DATALOADER:
   INCLUDE_CHANGE_LABEL: True
-
-AUGMENTATION:
-  IMAGE_OVERSAMPLING_TYPE: 'change'

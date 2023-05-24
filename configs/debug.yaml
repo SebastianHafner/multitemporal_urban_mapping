@@ -1,4 +1,4 @@
-_BASE_: "unetouttransformer_v4_os.yaml"
+_BASE_: "unetouttransformer_v5.yaml"
 DEBUG: True
 
 TRAINER:
@@ -8,5 +8,5 @@ DATALOADER:
   TIMESERIES_LENGTH: 5
 
 AUGMENTATION:
-  CROP_SIZE: 64
+  CROP_SIZE: 32
   IMAGE_OVERSAMPLING_TYPE: 'none'

@@ -1,15 +1,13 @@
 _BASE_: "base.yaml"
 
 MODEL:
-  TYPE: 'unetouttransformerv4'
+  TYPE: 'unetouttransformerv5'
   TRANSFORMER: True
   TRANSFORMER_PARAMS:
     N_HEADS: 2
+    SPATIAL_ATTENTION_SIZE: 3
   MAP_FROM_CHANGES: True
   ADJACENT_CHANGES: False
 
 DATALOADER:
   INCLUDE_CHANGE_LABEL: True
-
-AUGMENTATION:
-  IMAGE_OVERSAMPLING_TYPE: 'change'

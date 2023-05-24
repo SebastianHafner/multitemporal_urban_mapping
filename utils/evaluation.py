@@ -32,20 +32,21 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
         y = item['y'].to(device)
         m.add_sample(y, y_hat.detach())
 
-    f1_csem = metrics.f1_score(m.TP_csem, m.FP_csem, m.FN_csem)
+    f1_seg_cont = metrics.f1_score(m.TP_seg_cont, m.FP_seg_cont, m.FN_seg_cont)
 
     wandb.log({
-        f'{run_type} f1': f1_csem,
-        f'{run_type} f1_flsem': metrics.f1_score(m.TP_flsem, m.FP_flsem, m.FN_flsem),
-        f'{run_type} f1 cch': metrics.f1_score(m.TP_cch, m.FP_cch, m.FN_cch),
-        f'{run_type} f1 flch': metrics.f1_score(m.TP_flch, m.FP_flch, m.FN_flch),
+        f'{run_type} f1': f1_seg_cont,
+        f'{run_type} f1 seg cont': f1_seg_cont,
+        f'{run_type} f1 seg fl': metrics.f1_score(m.TP_seg_fl, m.FP_seg_fl, m.FN_seg_fl),
+        f'{run_type} f1 ch cont': metrics.f1_score(m.TP_ch_cont, m.FP_ch_cont, m.FN_ch_cont),
+        f'{run_type} f1 ch fl': metrics.f1_score(m.TP_ch_fl, m.FP_ch_fl, m.FN_ch_fl),
         f'{run_type} unsup_tc': np.mean(m.unsup_tc_values),
         f'{run_type} sup_tc': np.mean(m.sup_tc_values),
         f'{run_type} sup_tc_urban': np.mean(m.sup_tc_urban_values),
         'step': step, 'epoch': epoch,
     })
 
-    return f1_csem
+    return f1_seg_cont
 
 
 def model_evaluation_ch(net, cfg, device, run_type: str, epoch: float, step: int) -> float:

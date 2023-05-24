@@ -51,7 +51,7 @@ def run_training(cfg: experiment_manager.CfgNode):
         print(f'Starting epoch {epoch}/{epochs}.')
 
         start = timeit.default_timer()
-        loss_sem_set, loss_ch_set, loss_set = [], [], []
+        loss_seg_set, loss_ch_set, loss_set = [], [], []
 
         for i, batch in enumerate(dataloader):
 
@@ -79,7 +79,7 @@ def run_training(cfg: experiment_manager.CfgNode):
             loss.backward()
             optimizer.step()
 
-            loss_sem_set.append(loss_seg.item())
+            loss_seg_set.append(loss_seg.item())
             loss_ch_set.append(loss_ch.item())
             loss_set.append(loss.item())
 
@@ -92,7 +92,7 @@ def run_training(cfg: experiment_manager.CfgNode):
                 # logging
                 time = timeit.default_timer() - start
                 wandb.log({
-                    'loss_sem': np.mean(loss_sem_set),
+                    'loss_seg': np.mean(loss_seg_set),
                     'loss_ch': np.mean(loss_ch_set),
                     'loss': np.mean(loss_set),
                     'time': time,
@@ -100,14 +100,14 @@ def run_training(cfg: experiment_manager.CfgNode):
                     'epoch': epoch_float,
                 })
                 start = timeit.default_timer()
-                loss_sem_set, loss_ch_set, loss_set = [], [], []
+                loss_seg_set, loss_ch_set, loss_set = [], [], []
             # end of batch
 
         assert (epoch == epoch_float)
         print(f'epoch float {epoch_float} (step {global_step}) - epoch {epoch}')
         # evaluation at the end of an epoch
-        _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
-        f1_val = evaluation.model_evaluation(net, cfg, device, 'val', epoch_float, global_step)
+        _ = evaluation.model_evaluation_proposed(net, cfg, device, 'train', epoch_float, global_step)
+        f1_val = evaluation.model_evaluation_proposed(net, cfg, device, 'val', epoch_float, global_step)
 
         if f1_val <= best_f1_val:
             trigger_times += 1
@@ -128,7 +128,7 @@ def run_training(cfg: experiment_manager.CfgNode):
             break
 
     net, *_ = model_factory.load_checkpoint(cfg, device)
-    _ = evaluation.model_evaluation(net, cfg, device, 'test', epoch_float, global_step)
+    _ = evaluation.model_evaluation_proposed(net, cfg, device, 'test', epoch_float, global_step)
 
 
 if __name__ == '__main__':

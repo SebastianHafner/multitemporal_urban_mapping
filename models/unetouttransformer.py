@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision import transforms
 
 from typing import Tuple
 import einops
@@ -229,3 +230,79 @@ class UNetOutTransformerV4(nn.Module):
             y_hat_sem[:, t] = y_hat_sem[:, t + 1] if self.adjacent_changes else y_hat_sem[:, -1]
             y_hat_sem[:, t][y_hat_ch[:, t]] = False
         return y_hat_sem.float()
+
+
+class UNetOutTransformerV5(nn.Module):
+    def __init__(self, cfg: CfgNode):
+        # Super constructor
+        super(UNetOutTransformerV5, self).__init__()
+
+        # attributes
+        self.cfg = cfg
+        self.c = cfg.MODEL.IN_CHANNELS
+        self.d_out = cfg.MODEL.OUT_CHANNELS
+        self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
+        self.t = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.topology = cfg.MODEL.TOPOLOGY
+        self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
+        self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
+        self.d_model = self.topology[0]
+        self.d_hid = self.d_model * 4
+        self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
+        self.spatial_attention_size = cfg.MODEL.TRANSFORMER_PARAMS.SPATIAL_ATTENTION_SIZE
+
+        # unet blocks
+        self.inc = blocks.InConv(self.c, self.topology[0], blocks.DoubleConv)
+        self.encoder = unet.Encoder(cfg)
+        self.decoder = unet.Decoder(cfg)
+        self.outc = blocks.OutConv(self.topology[0], self.d_out)
+        self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
+
+        # positional encoding
+        positional_encodings = get_positional_encodings(self.t * self.spatial_attention_size**2, self.d_model)
+        self.register_buffer('positional_encodings', positional_encodings, persistent=False)
+
+        # transformer encoder
+        encoder_layer = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=self.n_heads,
+                                                   dim_feedforward=self.d_hid, batch_first=True,
+                                                   activation=self.activation)
+        self.transformer = nn.TransformerEncoder(encoder_layer, self.n_layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, _, H, W = x.size()
+
+        # feature extraction with unet
+        # https://discuss.pytorch.org/t/how-to-extract-patches-from-an-image/79923/5
+
+        x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
+        out = self.decoder(self.encoder(self.inc(x)))
+        out = einops.rearrange(out, '(b t) f h w -> b t f h w', b=B)
+
+        # spatio-temporal modeling with transformer
+
+        # patchify (b t c h w) -> (b t c h w hp hw)
+        out = einops.rearrange(out, 'b t f h w -> (b t) f h w', b=B)
+        out = transforms.Pad((1, 1, 1, 1), padding_mode='edge')(out)
+        out = einops.rearrange(out, '(b t) f h w -> b t f h w', b=B)
+        out = out.unfold(3, self.spatial_attention_size, 1).unfold(4, self.spatial_attention_size, 1)
+
+        tokens = einops.rearrange(out, 'b t f h w ph pw-> (b h w) (t ph pw) f')
+
+        # adding positional encoding
+        out = tokens + self.positional_encodings.repeat(B * H * W, 1, 1)
+
+        # transformer encoder
+        out = self.transformer(out)
+
+        out = einops.rearrange(out, '(b h w) (t ph pw) f -> b t f h w ph pw', b=B, h=H, t=T,
+                               ph=self.spatial_attention_size)
+        out = out[:, :, :, :, :, self.spatial_attention_size // 2, self.spatial_attention_size // 2]
+        if self.training and self.disable_outc:
+            return out
+
+        out = einops.rearrange(out, 'b t f h w -> (b t) f h w')
+        out = self.outc(out)
+        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
+
+        return out
+
