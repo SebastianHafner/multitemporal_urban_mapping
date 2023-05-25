@@ -80,7 +80,6 @@ class TrainDataset(AbstractSpaceNet7Dataset):
 
         self.T = cfg.DATALOADER.TIMESERIES_LENGTH
         self.include_change_label = cfg.DATALOADER.INCLUDE_CHANGE_LABEL
-        self.adjacent_changes = cfg.MODEL.ADJACENT_CHANGES
 
         # handling transformations of data
         self.no_augmentations = no_augmentations
@@ -130,10 +129,8 @@ class TrainDataset(AbstractSpaceNet7Dataset):
         if self.include_change_label:
             labels_ch = []
             for t in range(len(timestamps) - 1):
-                if self.adjacent_changes:
-                    labels_ch.append(~torch.eq(labels[t + 1], labels[t]))
-                else:
-                    labels_ch.append(~torch.eq(labels[-1], labels[t]))
+                labels_ch.append(torch.ne(labels[t + 1], labels[t]))
+            labels_ch.append(~torch.ne(labels[-1], labels[0]))
             item['y_ch'] = torch.stack(labels_ch)
 
         return item
@@ -152,8 +149,8 @@ class EvalDataset(AbstractSpaceNet7Dataset):
 
         self.T = cfg.DATALOADER.TIMESERIES_LENGTH
         self.include_change_label = cfg.DATALOADER.INCLUDE_CHANGE_LABEL
-        self.adjacent_changes = cfg.MODEL.ADJACENT_CHANGES
         self.tiling = tiling
+        self.eval_train_threshold = cfg.DATALOADER.EVAL_TRAIN_THRESHOLD
 
         # handling transformations of data
         self.transform = augmentations.compose_transformations(cfg, no_augmentations=True)
@@ -162,7 +159,8 @@ class EvalDataset(AbstractSpaceNet7Dataset):
 
         if aoi_id is None:
             if run_type == 'train':
-                self.aoi_ids = list(cfg.DATASET.TRAIN_IDS)
+                self.aoi_ids = np.array(list(cfg.DATASET.TRAIN_IDS))
+                self.aoi_ids = list(self.aoi_ids[np.random.rand(len(self.aoi_ids)) > self.eval_train_threshold])
             elif run_type == 'val':
                 self.aoi_ids = list(cfg.DATASET.VAL_IDS)
             elif run_type == 'test':
@@ -214,10 +212,8 @@ class EvalDataset(AbstractSpaceNet7Dataset):
         if self.include_change_label:
             labels_ch = []
             for t in range(len(timestamps) - 1):
-                if self.adjacent_changes:
-                    labels_ch.append(~torch.eq(labels[t + 1], labels[t]))
-                else:
-                    labels_ch.append(~torch.eq(labels[-1], labels[t]))
+                labels_ch.append(torch.ne(labels[t + 1], labels[t]))
+            labels_ch.append(~torch.ne(labels[-1], labels[0]))
             item['y_ch'] = torch.stack(labels_ch)
 
         return item

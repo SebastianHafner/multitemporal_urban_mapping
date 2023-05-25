@@ -1,0 +1,8 @@
+_BASE_: "base.yaml"
+
+MODEL:
+  TYPE: 'unetouttransformerv6'
+  TRANSFORMER: True
+  TRANSFORMER_PARAMS:
+    N_HEADS: 2
+    SPATIAL_ATTENTION_SIZE: 3
