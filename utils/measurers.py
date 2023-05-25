@@ -184,46 +184,41 @@ class MeasurerProposed(object):
         self.sup_tc_values = []
         self.sup_tc_urban_values = []
 
-    def add_sample(self, y: torch.Tensor, y_hat: torch.Tensor):
-        B, T, _, H, W = y.size()
+    def add_sample(self, y_seg: torch.Tensor, y_hat_seg: torch.Tensor, y_ch: torch.Tensor, y_hat_ch: torch.Tensor):
+        B, T, _, H, W = y_seg.size()
 
-        y = y.bool()
-        y_hat = y_hat > self.threshold
+        y_seg, y_ch = y_seg.bool(), y_ch.bool()
+        y_hat_seg, y_hat_ch = y_hat_seg > self.threshold, y_hat_ch > self.threshold
 
         # urban mapping
         # continuous
-        self.TP_seg_cont += torch.sum(y & y_hat).float()
-        self.TN_seg_cont += torch.sum(~y & ~y_hat).float()
-        self.FP_seg_cont += torch.sum(y_hat & ~y).float()
-        self.FN_seg_cont += torch.sum(~y_hat & y).float()
+        self.TP_seg_cont += torch.sum(y_seg & y_hat_seg).float()
+        self.TN_seg_cont += torch.sum(~y_seg & ~y_hat_seg).float()
+        self.FP_seg_cont += torch.sum(y_hat_seg & ~y_seg).float()
+        self.FN_seg_cont += torch.sum(~y_hat_seg & y_seg).float()
         # first last
-        self.TP_seg_cont += torch.sum(y[:, [0, -1]] & y_hat[:, [0, -1]]).float()
-        self.TN_seg_cont += torch.sum(~y[:, [0, -1]] & ~y_hat[:, [0, -1]]).float()
-        self.FP_seg_cont += torch.sum(y_hat[:, [0, -1]] & ~y[:, [0, -1]]).float()
-        self.FN_seg_cont += torch.sum(~y_hat[:, [0, -1]] & y[:, [0, -1]]).float()
+        self.TP_seg_cont += torch.sum(y_seg[:, [0, -1]] & y_hat_seg[:, [0, -1]]).float()
+        self.TN_seg_cont += torch.sum(~y_seg[:, [0, -1]] & ~y_hat_seg[:, [0, -1]]).float()
+        self.FP_seg_cont += torch.sum(y_hat_seg[:, [0, -1]] & ~y_seg[:, [0, -1]]).float()
+        self.FN_seg_cont += torch.sum(~y_hat_seg[:, [0, -1]] & y_seg[:, [0, -1]]).float()
 
         # urban change
         # continuous change
-        for t in range(1, T):
-            y_ch = ~torch.eq(y[:, t], y[:, t - 1])
-            y_hat_ch = ~torch.eq(y_hat[:, t], y_hat[:, t - 1])
-            self.TP_ch_cont += torch.sum(y_ch & y_hat_ch).float()
-            self.TN_ch_cont += torch.sum(~y_ch & ~y_hat_ch).float()
-            self.FP_ch_cont += torch.sum(y_hat_ch & ~y_ch).float()
-            self.FN_ch_cont += torch.sum(~y_hat_ch & y_ch).float()
+        self.TP_ch_cont += torch.sum(y_ch[:, :-1] & y_hat_ch[:, :-1]).float()
+        self.TN_ch_cont += torch.sum(~y_ch[:, :-1] & ~y_hat_ch[:, :-1]).float()
+        self.FP_ch_cont += torch.sum(y_hat_ch[:, :-1] & ~y_ch[:, :-1]).float()
+        self.FN_ch_cont += torch.sum(~y_hat_ch[:, :-1] & y_ch[:, :-1]).float()
         # first last change
-        y_ch = ~torch.eq(y[:, -1], y[:, 0])
-        y_hat_ch = ~torch.eq(y_hat[:, -1], y_hat[:, 0])
-        self.TP_ch_fl += torch.sum(y_ch & y_hat_ch).float()
-        self.TN_ch_fl += torch.sum(~y_ch & ~y_hat_ch).float()
-        self.FP_ch_fl += torch.sum(y_hat_ch & ~y_ch).float()
-        self.FN_ch_fl += torch.sum(~y_hat_ch & y_ch).float()
+        self.TP_ch_fl += torch.sum(y_ch[:, -1] & y_hat_ch[:, -1]).float()
+        self.TN_ch_fl += torch.sum(~y_ch[:, -1] & ~y_hat_ch[:, -1]).float()
+        self.FP_ch_fl += torch.sum(y_hat_ch[:, -1] & ~y_ch[:, -1]).float()
+        self.FN_ch_fl += torch.sum(~y_hat_ch[:, -1] & y_ch[:, -1]).float()
 
         # temporal consistency
         for b in range(B):
-            self.unsup_tc_values.append(metrics.unsupervised_tc(y_hat[b]))
-            self.sup_tc_values.append(metrics.supervised_tc(y[b], y_hat[b]))
-            self.sup_tc_urban_values.append(metrics.supervised_tc_urban(y[b], y_hat[b]))
+            self.unsup_tc_values.append(metrics.unsupervised_tc(y_hat_seg[b]))
+            self.sup_tc_values.append(metrics.supervised_tc(y_seg[b], y_hat_seg[b]))
+            self.sup_tc_urban_values.append(metrics.supervised_tc_urban(y_seg[b], y_hat_seg[b]))
 
     def is_empty(self):
         assert (len(self.unsup_tc_values) == len(self.sup_tc_values))

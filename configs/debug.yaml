@@ -1,4 +1,4 @@
-_BASE_: "lunet.yaml"
+_BASE_: "unetouttransformer_v4.yaml"
 DEBUG: True
 
 TRAINER:

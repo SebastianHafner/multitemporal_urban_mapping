@@ -3,6 +3,7 @@ from torch.utils import data as torch_data
 import wandb
 from utils import datasets, measurers, metrics
 import numpy as np
+import einops
 
 EPS = 10e-05
 
@@ -137,7 +138,8 @@ def model_evaluation_proposed(net, cfg, device, run_type: str, epoch: float, ste
 
     m = measurers.MeasurerProposed()
 
-    dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE, num_workers=0, shuffle=False,
+    batch_size = cfg.TRAINER.BATCH_SIZE * 2
+    dataloader = torch_data.DataLoader(ds, batch_size=batch_size, num_workers=0, shuffle=False,
                                        drop_last=False)
 
     for step, item in enumerate(dataloader):
@@ -146,20 +148,38 @@ def model_evaluation_proposed(net, cfg, device, run_type: str, epoch: float, ste
         with torch.no_grad():
             features = net(x)
 
-        y = item['y'].to(device)
-        m.add_sample(y, y_hat.detach())
+        # urban mapping
+        logits_seg = net.module.outc_seg(einops.rearrange(features, 'b t f h w -> (b t) f h w'))
+        logits_seg = einops.rearrange(logits_seg, '(b t) c h w -> b t c h w', b=batch_size)
+        y_hat_seg = torch.sigmoid(logits_seg).detach()
 
-    f1_csem = metrics.f1_score(m.TP_csem, m.FP_csem, m.FN_csem)
+        y_hat_ch = []
+        for t in range(cfg.DATALOADER.TIMESERIES_LENGTH - 1):
+            logits_ch = net.module.outc_ch(features[:, t + 1] - features[:, t])
+            y_hat_ch.append(torch.sigmoid(logits_ch).detach())
+        logits_ch = net.module.outc_ch(features[:, -1] - features[:, 0])
+        y_hat_ch.append(torch.sigmoid(logits_ch).detach())
+        y_hat_ch = torch.stack(y_hat_ch)
+
+        y_seg, y_ch = item['y'].to(device), item['y'].to(device)
+        m.add_sample(y_seg, y_hat_seg, y_ch, y_hat_ch)
+
+    f1_seg_cont = metrics.f1_score(m.TP_seg_cont, m.FP_seg_cont, m.FN_seg_cont)
+    f1_seg_fl = metrics.f1_score(m.TP_seg_fl, m.FP_seg_fl, m.FN_seg_fl)
+    f1_ch_cont = metrics.f1_score(m.TP_ch_cont, m.FP_ch_cont, m.FN_ch_cont)
+    f1_ch_fl = metrics.f1_score(m.TP_ch_fl, m.FP_ch_fl, m.FN_ch_fl)
+    f1 = (f1_seg_cont + f1_seg_fl + f1_ch_cont + f1_ch_fl) / 4
 
     wandb.log({
-        f'{run_type} f1': f1_csem,
-        f'{run_type} f1_flsem': metrics.f1_score(m.TP_flsem, m.FP_flsem, m.FN_flsem),
-        f'{run_type} f1 cch': metrics.f1_score(m.TP_cch, m.FP_cch, m.FN_cch),
-        f'{run_type} f1 flch': metrics.f1_score(m.TP_flch, m.FP_flch, m.FN_flch),
+        f'{run_type} f1': f1,
+        f'{run_type} f1 seg cont': f1_seg_cont,
+        f'{run_type} f1 seg fl': f1_seg_fl,
+        f'{run_type} f1 ch cont': f1_ch_cont,
+        f'{run_type} f1 ch fl': f1_ch_fl,
         f'{run_type} unsup_tc': np.mean(m.unsup_tc_values),
         f'{run_type} sup_tc': np.mean(m.sup_tc_values),
         f'{run_type} sup_tc_urban': np.mean(m.sup_tc_urban_values),
         'step': step, 'epoch': epoch,
     })
 
-    return f1_csem
+    return f1
