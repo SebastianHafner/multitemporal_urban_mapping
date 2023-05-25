@@ -149,7 +149,7 @@ class MultiTaskLUNetMeasurer(object):
         self.FN_seg_fl += torch.sum(~y_hat_seg[:, [0, -1]] & y[:, [0, -1]]).float()
 
         # urban change first last change
-        y_ch = ~torch.eq(y[:, -1], y[:, 0])
+        y_ch = torch.ne(y[:, -1], y[:, 0])
         self.TP_ch_fl += torch.sum(y_ch & y_hat_ch).float()
         self.TN_ch_fl += torch.sum(~y_ch & ~y_hat_ch).float()
         self.FP_ch_fl += torch.sum(y_hat_ch & ~y_ch).float()

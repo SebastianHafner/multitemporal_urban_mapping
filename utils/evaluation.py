@@ -115,15 +115,18 @@ def model_evaluation_multitasklunet(net, cfg, device, run_type: str, epoch: floa
         y = item['y'].to(device)
         m.add_sample(y, y_hat_ch.detach(), y_hat_seg.detach())
 
-    f1_flch = metrics.f1_score(m.TP_flch, m.FP_flch, m.FN_flch)
+    f1_ch_fl = metrics.f1_score(m.TP_ch_fl, m.FP_ch_fl, m.FN_ch_fl)
+    f1_seg_fl = metrics.f1_score(m.TP_seg_fl, m.FP_seg_fl, m.FN_seg_fl)
+    f1 = (f1_ch_fl + f1_seg_fl) / 2
 
     wandb.log({
-        f'{run_type} f1 flch': f1_flch,
-        f'{run_type} f1_flsem': metrics.f1_score(m.TP_flsem, m.FP_flsem, m.FN_flsem),
+        f'{run_type} f1': f1,
+        f'{run_type} f1 ch fl': f1_ch_fl,
+        f'{run_type} f1 seg fl': f1_seg_fl,
         'step': step, 'epoch': epoch,
     })
 
-    return f1_flch
+    return f1
 
 
 def model_evaluation_proposed(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
