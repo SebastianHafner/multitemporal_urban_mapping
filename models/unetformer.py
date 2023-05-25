@@ -154,8 +154,8 @@ class MultiTaskUNetFormer(nn.Module):
             feature_ch = []
             for t in range(T - 1):
                 feature_ch.append(feature[:, t + 1] - feature[:, t])
-            feature_ch = torch.stack(feature_ch)
-            feature_ch = einops.rearrange(feature_ch, 't b c h w -> (b t) c h w')
+            feature_ch.append(feature[:, -1] - feature[:, 0])
+            feature_ch = einops.rearrange(torch.stack(feature_ch), 't b c h w -> (b t) c h w')
             features_ch.append(feature_ch)
 
         # urban mapping

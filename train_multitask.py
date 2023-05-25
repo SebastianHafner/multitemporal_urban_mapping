@@ -44,7 +44,7 @@ def run_training(cfg: experiment_manager.CfgNode):
     best_f1_val = 0
     trigger_times = 0
     stop_training = False
-    _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
+
     for epoch in range(1, epochs + 1):
         print(f'Starting epoch {epoch}/{epochs}.')
 
