@@ -150,7 +150,7 @@ def model_evaluation_proposed(net, cfg, device, run_type: str, epoch: float, ste
 
         # urban mapping
         logits_seg = net.module.outc_seg(einops.rearrange(features, 'b t f h w -> (b t) f h w'))
-        logits_seg = einops.rearrange(logits_seg, '(b t) c h w -> b t c h w', t=T)
+        logits_seg = einops.rearrange(logits_seg, '(b t) c h w -> b t c h w', b=B)
         y_hat_seg = torch.sigmoid(logits_seg).detach()
 
         y_hat_ch = []
@@ -159,9 +159,9 @@ def model_evaluation_proposed(net, cfg, device, run_type: str, epoch: float, ste
             y_hat_ch.append(torch.sigmoid(logits_ch).detach())
         logits_ch = net.module.outc_ch(features[:, -1] - features[:, 0])
         y_hat_ch.append(torch.sigmoid(logits_ch).detach())
-        y_hat_ch = torch.stack(y_hat_ch)
+        y_hat_ch = einops.rearrange(torch.stack(y_hat_ch), 't b c h w -> b t c h w')
 
-        y_seg, y_ch = item['y'].to(device), item['y'].to(device)
+        y_seg, y_ch = item['y'].to(device), item['y_ch'].to(device)
         m.add_sample(y_seg, y_hat_seg, y_ch, y_hat_ch)
 
     f1_seg_cont = metrics.f1_score(m.TP_seg_cont, m.FP_seg_cont, m.FN_seg_cont)
