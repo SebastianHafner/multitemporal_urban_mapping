@@ -185,8 +185,6 @@ class UNetOutTransformerV4(nn.Module):
         self.outc_seg = blocks.OutConv(self.topology[0], self.d_out)
         self.outc_ch = blocks.OutConv(self.topology[0], self.d_out)
         self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
-        self.map_from_changes = cfg.MODEL.MAP_FROM_CHANGES
-        self.adjacent_changes = cfg.MODEL.ADJACENT_CHANGES
 
         # temporal encoding
         self.register_buffer('temporal_encodings', encodings.get_relative_encodings(self.t, self.d_model),

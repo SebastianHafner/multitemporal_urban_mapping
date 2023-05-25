@@ -138,23 +138,23 @@ def model_evaluation_proposed(net, cfg, device, run_type: str, epoch: float, ste
 
     m = measurers.MeasurerProposed()
 
-    batch_size = int(cfg.TRAINER.BATCH_SIZE) * 2
-    dataloader = torch_data.DataLoader(ds, batch_size=batch_size, num_workers=0, shuffle=False,
+    dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE * 2, num_workers=0, shuffle=False,
                                        drop_last=False)
 
     for step, item in enumerate(dataloader):
         x = item['x'].to(device)
+        B, T, *_ = x.size()
 
         with torch.no_grad():
             features = net(x)
 
         # urban mapping
         logits_seg = net.module.outc_seg(einops.rearrange(features, 'b t f h w -> (b t) f h w'))
-        logits_seg = einops.rearrange(logits_seg, '(b t) c h w -> b t c h w', b=batch_size)
+        logits_seg = einops.rearrange(logits_seg, '(b t) c h w -> b t c h w', t=T)
         y_hat_seg = torch.sigmoid(logits_seg).detach()
 
         y_hat_ch = []
-        for t in range(cfg.DATALOADER.TIMESERIES_LENGTH - 1):
+        for t in range(T - 1):
             logits_ch = net.module.outc_ch(features[:, t + 1] - features[:, t])
             y_hat_ch.append(torch.sigmoid(logits_ch).detach())
         logits_ch = net.module.outc_ch(features[:, -1] - features[:, 0])
