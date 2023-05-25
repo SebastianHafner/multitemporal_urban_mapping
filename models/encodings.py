@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 
-def get_positional_encodings(sequence_length, d):
+def get_relative_encodings(sequence_length, d):
     result = torch.ones(sequence_length, d)
     for i in range(sequence_length):
         for j in range(d):

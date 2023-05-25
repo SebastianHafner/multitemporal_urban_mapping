@@ -9,8 +9,7 @@ import einops
 from utils.experiment_manager import CfgNode
 
 from models.embeddings import PatchEmbedding
-from models.encodings import get_positional_encodings
-from models import unet
+from models import unet, encodings
 from models import building_blocks as blocks
 
 
@@ -39,8 +38,8 @@ class UNetOutTransformer(nn.Module):
         self.outc = blocks.OutConv(self.topology[0], self.d_out)
         self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
 
-        # positional encoding
-        self.register_buffer('positional_encodings', get_positional_encodings(self.t, self.d_model),
+        # temporal encoding
+        self.register_buffer('temporal_encodings', encodings.get_relative_encodings(self.t, self.d_model),
                              persistent=False)
 
         # transformer encoder
@@ -60,8 +59,8 @@ class UNetOutTransformer(nn.Module):
         # temporal modeling with transformer
         tokens = einops.rearrange(out, 'b t f h w -> (b h w) t f')
 
-        # adding positional encoding
-        out = tokens + self.positional_encodings.repeat(B * H * W, 1, 1)
+        # adding temporal encoding
+        out = tokens + self.temporal_encodings.repeat(B * H * W, 1, 1)
 
         # transformer encoder
         out = self.transformer(out)
@@ -104,8 +103,8 @@ class MultiTaskUNetOutTransformer(nn.Module):
         self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
         self.map_from_changes = cfg.MODEL.MAP_FROM_CHANGES
 
-        # positional encoding
-        self.register_buffer('positional_encodings', get_positional_encodings(self.t, self.d_model),
+        # temporal encoding
+        self.register_buffer('temporal_encodings', encodings.get_relative_encodings(self.t, self.d_model),
                              persistent=False)
 
         # transformer encoder
@@ -125,8 +124,8 @@ class MultiTaskUNetOutTransformer(nn.Module):
         # temporal modeling with transformer
         tokens = einops.rearrange(out, 'b t f h w -> (b h w) t f')
 
-        # adding positional encoding
-        tokens = tokens + self.positional_encodings.repeat(B * H * W, 1, 1)
+        # adding temporal encoding
+        tokens = tokens + self.temporal_encodings.repeat(B * H * W, 1, 1)
 
         # transformer encoder
         features = self.transformer(tokens)
@@ -189,8 +188,8 @@ class UNetOutTransformerV4(nn.Module):
         self.map_from_changes = cfg.MODEL.MAP_FROM_CHANGES
         self.adjacent_changes = cfg.MODEL.ADJACENT_CHANGES
 
-        # positional encoding
-        self.register_buffer('positional_encodings', get_positional_encodings(self.t, self.d_model),
+        # temporal encoding
+        self.register_buffer('temporal_encodings', encodings.get_relative_encodings(self.t, self.d_model),
                              persistent=False)
 
         # transformer encoder
@@ -210,8 +209,8 @@ class UNetOutTransformerV4(nn.Module):
         # temporal modeling with transformer
         tokens = einops.rearrange(out, 'b t f h w -> (b h w) t f')
 
-        # adding positional encoding
-        tokens = tokens + self.positional_encodings.repeat(B * H * W, 1, 1)
+        # adding temporal encoding
+        tokens = tokens + self.temporal_encodings.repeat(B * H * W, 1, 1)
 
         # transformer encoder
         features = self.transformer(tokens)
@@ -247,9 +246,9 @@ class UNetOutTransformerV5(nn.Module):
         self.outc = blocks.OutConv(self.topology[0], self.d_out)
         self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
 
-        # positional encoding
-        positional_encodings = get_positional_encodings(self.t * self.spatial_attention_size**2, self.d_model)
-        self.register_buffer('positional_encodings', positional_encodings, persistent=False)
+        # temporal encoding
+        temporal_encodings = encodings.get_relative_encodings(self.t * self.spatial_attention_size**2, self.d_model)
+        self.register_buffer('temporal_encodings', temporal_encodings, persistent=False)
 
         # transformer encoder
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=self.n_heads,
@@ -277,8 +276,8 @@ class UNetOutTransformerV5(nn.Module):
 
         tokens = einops.rearrange(out, 'b t f h w ph pw-> (b h w) (t ph pw) f')
 
-        # adding positional encoding
-        out = tokens + self.positional_encodings.repeat(B * H * W, 1, 1)
+        # adding temporal encoding
+        out = tokens + self.temporal_encodings.repeat(B * H * W, 1, 1)
 
         # transformer encoder
         out = self.transformer(out)
@@ -291,7 +290,7 @@ class UNetOutTransformerV5(nn.Module):
 
         out = einops.rearrange(out, 'b t f h w -> (b t) f h w')
         out = self.outc(out)
-        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
+        out = einops.rearrange(out, '(b t) c h w -> b t c h w', b=B)
 
         return out
 
@@ -323,49 +322,54 @@ class UNetOutTransformerV6(nn.Module):
         self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
 
         # positional encoding
-        positional_encodings = get_positional_encodings(self.t * self.spatial_attention_size ** 2, self.d_model)
+        positional_encodings = encodings.get_relative_encodings(self.spatial_attention_size ** 2, self.d_model)
         self.register_buffer('positional_encodings', positional_encodings, persistent=False)
 
-        # transformer encoder
+        temporal_encodings = encodings.get_relative_encodings(self.t, self.d_model)
+        self.register_buffer('temporal_encodings', temporal_encodings, persistent=False)
+
+        # transformer encoders
         encoder_layer = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=self.n_heads,
                                                    dim_feedforward=self.d_hid, batch_first=True,
                                                    activation=self.activation)
-        self.transformer = nn.TransformerEncoder(encoder_layer, self.n_layers)
+        # spatial encoder
+        self.spatial_transformer = nn.TransformerEncoder(encoder_layer, self.n_layers)
+        # temporal encoder
+        self.temporal_transformer = nn.TransformerEncoder(encoder_layer, self.n_layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, T, _, H, W = x.size()
-
-        # feature extraction with unet
-        # https://discuss.pytorch.org/t/how-to-extract-patches-from-an-image/79923/5
 
         x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
         out = self.decoder(self.encoder(self.inc(x)))
         out = einops.rearrange(out, '(b t) f h w -> b t f h w', b=B)
 
-        # spatio-temporal modeling with transformer
-
+        # spatial attention
         # patchify (b t c h w) -> (b t c h w hp hw)
         out = einops.rearrange(out, 'b t f h w -> (b t) f h w', b=B)
         out = transforms.Pad((1, 1, 1, 1), padding_mode='edge')(out)
         out = einops.rearrange(out, '(b t) f h w -> b t f h w', b=B)
         out = out.unfold(3, self.spatial_attention_size, 1).unfold(4, self.spatial_attention_size, 1)
 
-        tokens = einops.rearrange(out, 'b t f h w ph pw-> (b h w) (t ph pw) f')
+        tokens = einops.rearrange(out, 'b t f h w ph pw-> (b t h w) (ph pw) f')
+        out = tokens + self.positional_encodings.repeat(B * T * H * W, 1, 1)
+        out = self.spatial_transformer(out)
 
-        # adding positional encoding
-        out = tokens + self.positional_encodings.repeat(B * H * W, 1, 1)
-
-        # transformer encoder
-        out = self.transformer(out)
-
-        out = einops.rearrange(out, '(b h w) (t ph pw) f -> b t f h w ph pw', b=B, h=H, t=T,
+        out = einops.rearrange(out, '(b t h w) (ph pw) f -> b t f h w ph pw', b=B, t=T, h=H,
                                ph=self.spatial_attention_size)
         out = out[:, :, :, :, :, self.spatial_attention_size // 2, self.spatial_attention_size // 2]
+
+        # temporal attention
+        tokens = einops.rearrange(out, 'b t f h w -> (b h w) t f')
+        tokens = tokens + self.temporal_encodings.repeat(B * H * W, 1, 1)
+        out = self.temporal_transformer(tokens)
+        out = einops.rearrange(out, '(b h w) t f -> b t f h w', b=B, h=H)
+
         if self.training and self.disable_outc:
             return out
 
         out = einops.rearrange(out, 'b t f h w -> (b t) f h w')
         out = self.outc(out)
-        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
+        out = einops.rearrange(out, '(b t) c h w -> b t c h w', b=B)
 
         return out

@@ -8,7 +8,7 @@ import einops
 from utils.experiment_manager import CfgNode
 
 from models.embeddings import PatchEmbedding
-from models.encodings import get_positional_encodings
+from models import encodings
 from models import unet
 from models import building_blocks as blocks
 
@@ -43,7 +43,7 @@ class UNetFormer(nn.Module):
         transformer_dims = [self.topology[-1]] + list(self.topology[::-1])
         for i, d_model in enumerate(transformer_dims):
             # positional encoding
-            self.register_buffer(f'positional_encodings_{i}', get_positional_encodings(self.t, d_model),
+            self.register_buffer(f'positional_encodings_{i}', encodings.get_relative_encodings(self.t, d_model),
                                  persistent=False)
 
             encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=self.n_heads,

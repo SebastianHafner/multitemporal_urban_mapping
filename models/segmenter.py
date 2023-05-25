@@ -8,7 +8,7 @@ import einops
 from utils.experiment_manager import CfgNode
 
 from models.embeddings import PatchEmbedding
-from models.encodings import get_positional_encodings
+from models import encodings
 
 
 class Segmenter(nn.Module):
@@ -36,7 +36,7 @@ class Segmenter(nn.Module):
         self.patch_embedding = PatchEmbedding(self.c, self.patch_size, self.d_model)
 
         # positional encoding
-        self.register_buffer('positional_encodings', get_positional_encodings(self.n_patches ** 2, self.d_model),
+        self.register_buffer('positional_encodings', encodings.get_relative_encodings(self.n_patches ** 2, self.d_model),
                              persistent=False)
 
         # transformer encoder
