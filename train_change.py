@@ -82,6 +82,7 @@ def run_training(cfg: experiment_manager.CfgNode):
                 time = timeit.default_timer() - start
                 wandb.log({
                     'loss': np.mean(loss_set),
+                    'loss_ch': np.mean(loss_set),
                     'time': time,
                     'step': global_step,
                     'epoch': epoch_float,

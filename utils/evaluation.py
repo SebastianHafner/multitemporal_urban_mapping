@@ -15,7 +15,7 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
 
     m = measurers.Measurer()
 
-    dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE, num_workers=0, shuffle=False,
+    dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE * 2, num_workers=0, shuffle=False,
                                        drop_last=False)
 
     for step, item in enumerate(dataloader):
@@ -71,20 +71,23 @@ def model_evaluation_ch(net, cfg, device, run_type: str, epoch: float, step: int
         m.add_sample(y_ch, y_hat_ch.detach(), net.module.change_method)
 
     if net.module.change_method == 'bitemporal':
-        f1_cch = metrics.f1_score(m.TP_cch, m.FP_cch, m.FN_cch)
+        f1_ch_cont = metrics.f1_score(m.TP_ch_cont, m.FP_ch_cont, m.FN_ch_cont)
+        f1_ch_fl = metrics.f1_score(m.TP_ch_fl, m.FP_ch_fl, m.FN_ch_fl)
+        f1 = (f1_ch_cont + f1_ch_fl) / 2
         wandb.log({
-            f'{run_type} f1 cch': f1_cch,
-            f'{run_type} f1 flch': metrics.f1_score(m.TP_flch, m.FP_flch, m.FN_flch),
+            f'{run_type} f1': f1,
+            f'{run_type} f1 ch cont': f1_ch_cont,
+            f'{run_type} f1 ch fl': f1_ch_fl,
             'step': step, 'epoch': epoch,
         })
-        return f1_cch
+        return f1
     elif net.module.change_method == 'timeseries':
-        f1_flch = metrics.f1_score(m.TP_flch, m.FP_flch, m.FN_flch)
+        f1_ch_fl = metrics.f1_score(m.TP_ch_fl, m.FP_ch_fl, m.FN_ch_fl)
         wandb.log({
-            f'{run_type} f1 flch': f1_flch,
+            f'{run_type} f1 ch fl': f1_ch_fl,
             'step': step, 'epoch': epoch,
         })
-        return f1_flch
+        return f1_ch_fl
     else:
         raise Exception('Unkown change method!')
 
