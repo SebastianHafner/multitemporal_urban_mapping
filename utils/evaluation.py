@@ -57,7 +57,7 @@ def model_evaluation_ch(net, cfg, device, run_type: str, epoch: float, step: int
 
     m = measurers.ChangeMeasurer()
 
-    dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE, num_workers=0, shuffle=False,
+    dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE * 2, num_workers=0, shuffle=False,
                                        drop_last=False)
 
     for step, item in enumerate(dataloader):

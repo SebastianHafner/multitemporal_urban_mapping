@@ -59,12 +59,11 @@ def run_training(cfg: experiment_manager.CfgNode):
             x = batch['x'].to(device)
             logits = net(x)
 
-            y = batch['y_ch'].to(device)
+            y_ch = batch['y_ch'].to(device)
             if net.module.change_method == 'bitemporal':
-                loss = criterion(logits, y)
+                loss = criterion(logits, y_ch)
             elif net.module.change_method == 'timeseries':
-                y_fl = torch.sum(y, dim=1) > 0
-                loss = criterion(logits, y_fl)
+                loss = criterion(logits, y_ch[:, -1])
             else:
                 raise Exception('Unknown change method!')
             loss.backward()

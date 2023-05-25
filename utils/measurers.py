@@ -33,10 +33,10 @@ class Measurer(object):
         self.FP_seg_cont += torch.sum(y_hat & ~y).float()
         self.FN_seg_cont += torch.sum(~y_hat & y).float()
         # first last
-        self.TP_seg_cont += torch.sum(y[:, [0, -1]] & y_hat[:, [0, -1]]).float()
-        self.TN_seg_cont += torch.sum(~y[:, [0, -1]] & ~y_hat[:, [0, -1]]).float()
-        self.FP_seg_cont += torch.sum(y_hat[:, [0, -1]] & ~y[:, [0, -1]]).float()
-        self.FN_seg_cont += torch.sum(~y_hat[:, [0, -1]] & y[:, [0, -1]]).float()
+        self.TP_seg_fl += torch.sum(y[:, [0, -1]] & y_hat[:, [0, -1]]).float()
+        self.TN_seg_fl += torch.sum(~y[:, [0, -1]] & ~y_hat[:, [0, -1]]).float()
+        self.FP_seg_fl += torch.sum(y_hat[:, [0, -1]] & ~y[:, [0, -1]]).float()
+        self.FN_seg_fl += torch.sum(~y_hat[:, [0, -1]] & y[:, [0, -1]]).float()
 
         # urban change
         # continuous change

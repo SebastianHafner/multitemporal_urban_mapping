@@ -130,7 +130,7 @@ class TrainDataset(AbstractSpaceNet7Dataset):
             labels_ch = []
             for t in range(len(timestamps) - 1):
                 labels_ch.append(torch.ne(labels[t + 1], labels[t]))
-            labels_ch.append(~torch.ne(labels[-1], labels[0]))
+            labels_ch.append(torch.ne(labels[-1], labels[0]))
             item['y_ch'] = torch.stack(labels_ch)
 
         return item
@@ -213,7 +213,7 @@ class EvalDataset(AbstractSpaceNet7Dataset):
             labels_ch = []
             for t in range(len(timestamps) - 1):
                 labels_ch.append(torch.ne(labels[t + 1], labels[t]))
-            labels_ch.append(~torch.ne(labels[-1], labels[0]))
+            labels_ch.append(torch.ne(labels[-1], labels[0]))
             item['y_ch'] = torch.stack(labels_ch)
 
         return item
