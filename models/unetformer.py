@@ -42,8 +42,8 @@ class UNetFormer(nn.Module):
         transformers = []
         transformer_dims = [self.topology[-1]] + list(self.topology[::-1])
         for i, d_model in enumerate(transformer_dims):
-            # positional encoding
-            self.register_buffer(f'positional_encodings_{i}', encodings.get_relative_encodings(self.t, d_model),
+            # temporal encoding
+            self.register_buffer(f'temporal_encodings_{i}', encodings.get_relative_encodings(self.t, d_model),
                                  persistent=False)
 
             encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=self.n_heads,
@@ -67,7 +67,7 @@ class UNetFormer(nn.Module):
             # adding positional encoding
             scale_factor = 2**(len(self.topology) - i)
             h, w = H // scale_factor, W // scale_factor
-            tokens = tokens + getattr(self, f'positional_encodings_{i}').repeat(B * h * w, 1, 1)
+            tokens = tokens + getattr(self, f'temporal_encodings_{i}').repeat(B * h * w, 1, 1)
 
             f = transformer(tokens)
 
@@ -102,21 +102,21 @@ class MultiTaskUNetFormer(nn.Module):
         # unet blocks
         self.inc = blocks.InConv(self.c, self.topology[0], blocks.DoubleConv)
         self.encoder = unet.Encoder(cfg)
-        self.decoder = unet.Decoder(cfg)
-        self.outc = blocks.OutConv(self.topology[0], self.d_out)
+
+        self.decoder_seg = unet.Decoder(cfg)
+        self.outc_seg = blocks.OutConv(self.topology[0], self.d_out)
         self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
 
         self.decoder_ch = unet.Decoder(cfg)
         self.outc_ch = blocks.OutConv(self.topology[0], self.d_out)
         self.map_from_changes = cfg.MODEL.MAP_FROM_CHANGES
-        self.adjacent_changes = cfg.MODEL.ADJACENT_CHANGES
 
         # transformers
         transformers = []
         transformer_dims = [self.topology[-1]] + list(self.topology[::-1])
         for i, d_model in enumerate(transformer_dims):
-            # positional encoding
-            self.register_buffer(f'positional_encodings_{i}', get_positional_encodings(self.t, d_model),
+            # temporal encoding
+            self.register_buffer(f'temporal_encodings_{i}', encodings.get_relative_encodings(self.t, d_model),
                                  persistent=False)
 
             encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=self.n_heads,
@@ -135,53 +135,50 @@ class MultiTaskUNetFormer(nn.Module):
         # temporal modeling of features with transformer
         for i, transformer in enumerate(self.transformers):
             f = features[i]
-            tokens = einops.rearrange(f, '(b1 b2) f h w -> (b1 h w) b2 f', b1=B)
+            tokens = einops.rearrange(f, '(b t) f h w -> (b h w) t f', b=B)
 
-            # adding positional encoding
+            # adding temporal encoding
             scale_factor = 2 ** (len(self.topology) - i)
             h, w = H // scale_factor, W // scale_factor
-            tokens = tokens + getattr(self, f'positional_encodings_{i}').repeat(B * h * w, 1, 1)
+            tokens = tokens + getattr(self, f'temporal_encodings_{i}').repeat(B * h * w, 1, 1)
 
             f = transformer(tokens)
 
-            f = einops.rearrange(f, '(b1 h1 h2) t f -> (b1 t) f h1 h2', b1=B, h1=h)
+            f = einops.rearrange(f, '(b h w) t f -> (b t) f h w', b=B, h=h)
             features[i] = f
 
         # compute urban change detection features
         features_ch = []
         for feature in features:
-            feature = einops.rearrange(feature, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
+            feature = einops.rearrange(feature, '(b t) c h w -> b t c h w', b=B)
             feature_ch = []
             for t in range(T - 1):
-                if self.adjacent_changes:
-                    feature_ch.append(feature[:, t + 1] - feature[:, t])
-                else:
-                    feature_ch.append(feature[:, -1] - feature[:, t])
+                feature_ch.append(feature[:, t + 1] - feature[:, t])
             feature_ch = torch.stack(feature_ch)
             feature_ch = einops.rearrange(feature_ch, 't b c h w -> (b t) c h w')
             features_ch.append(feature_ch)
 
         # urban mapping
-        features_sem = self.decoder(features)
-        out_sem = self.outc(features_sem)
-        out_sem = einops.rearrange(out_sem, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
+        features_seg = self.decoder_seg(features)
+        out_seg = self.outc_seg(features_seg)
+        out_seg = einops.rearrange(out_seg, '(b t) c h w -> b t c h w', b=B)
 
         # urban change detection
         features_ch = self.decoder_ch(features_ch)
         out_ch = self.outc_ch(features_ch)
-        out_ch = einops.rearrange(out_ch, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
+        out_ch = einops.rearrange(out_ch, '(b t) c h w -> b t c h w', b=B)
 
         if self.map_from_changes or self.training:
-            return out_sem, out_ch
+            return out_seg, out_ch
         else:
-            return out_sem
+            return out_seg
 
-    def continuous_mapping_from_logits(self, logits_sem: torch.Tensor, logits_ch: torch.Tensor,
+    def continuous_mapping_from_logits(self, logits_seg: torch.Tensor, logits_ch: torch.Tensor,
                                        threshold: float = 0.5) -> torch.Tensor:
         assert self.map_from_changes
-        y_hat_sem, y_hat_ch = torch.sigmoid(logits_sem) > threshold, torch.sigmoid(logits_ch) > threshold
-        T = logits_sem.size(1)
+        y_hat_seg, y_hat_ch = torch.sigmoid(logits_seg) > threshold, torch.sigmoid(logits_ch) > threshold
+        T = logits_seg.size(1)
         for t in range(T - 2, -1, -1):
-            y_hat_sem[:, t] = y_hat_sem[:, t + 1] if self.adjacent_changes else y_hat_sem[:, -1]
-            y_hat_sem[:, t][y_hat_ch[:, t]] = False
-        return y_hat_sem.float()
+            y_hat_seg[:, t] = y_hat_seg[:, t + 1]
+            y_hat_seg[:, t][y_hat_ch[:, t]] = False
+        return y_hat_seg.float()
