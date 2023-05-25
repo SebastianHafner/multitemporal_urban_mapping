@@ -1099,15 +1099,20 @@ class ChangeFormerV6(nn.Module):
                                              output_nc=output_nc,
                                              decoder_softmax=False, feature_strides=[2, 4, 8, 16])
 
+    def _forward(self, x1: torch.Tensor, x2: torch.Tensor) -> torch.Tensor:
+        [fx1, fx2] = [self.Tenc_x2(x1), self.Tenc_x2(x2)]
+        cp = self.TDec_x2(fx1, fx2)[-1]
+        return cp
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         B, T, _, H, W = x.size()
         out_ch = []
 
         for t in range(T - 1):
-            x1, x2 = x[:, t], x[:, t + 1]
-            [fx1, fx2] = [self.Tenc_x2(x1), self.Tenc_x2(x2)]
-            cp = self.TDec_x2(fx1, fx2)[-1]
+            cp = self._forward(x[:, t], x[:, t + 1])
             out_ch.append(cp)
+        cp = self._forward(x[:, 0], x[:, -1])
+        out_ch.append(cp)
 
         out_ch = torch.stack(out_ch)
         out_ch = einops.rearrange(out_ch, 't b c h w -> b t c h w')
