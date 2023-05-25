@@ -24,14 +24,14 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
 
         with torch.no_grad():
             if cfg.MODEL.MAP_FROM_CHANGES:
-                logits_sem, logits_ch = net(x)
-                y_hat = net.module.continuous_mapping_from_logits(logits_sem, logits_ch)
+                logits_seg, logits_ch = net(x)
+                y_hat_seg = net.module.continuous_mapping_from_logits(logits_seg, logits_ch)
             else:
-                logits = net(x)
-                y_hat = torch.sigmoid(logits)
+                logits_seg = net(x)
+                y_hat_seg = torch.sigmoid(logits_seg)
 
-        y = item['y'].to(device)
-        m.add_sample(y, y_hat.detach())
+        y_seg = item['y'].to(device)
+        m.add_sample(y_seg, y_hat_seg.detach())
 
     f1_seg_cont = metrics.f1_score(m.TP_seg_cont, m.FP_seg_cont, m.FN_seg_cont)
 
@@ -138,7 +138,7 @@ def model_evaluation_proposed(net, cfg, device, run_type: str, epoch: float, ste
 
     m = measurers.MeasurerProposed()
 
-    batch_size = cfg.TRAINER.BATCH_SIZE * 2
+    batch_size = int(cfg.TRAINER.BATCH_SIZE) * 2
     dataloader = torch_data.DataLoader(ds, batch_size=batch_size, num_workers=0, shuffle=False,
                                        drop_last=False)
 

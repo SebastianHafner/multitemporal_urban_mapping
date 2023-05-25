@@ -100,10 +100,9 @@ class MultiTaskUNetOutTransformer(nn.Module):
         self.encoder = unet.Encoder(cfg)
         self.decoder = unet.Decoder(cfg)
         self.outc = blocks.OutConv(self.topology[0], self.d_out)
-        self.outc_ch = blocks.OutConv(self.topology[0] * 2, self.d_out)
+        self.outc_ch = blocks.OutConv(self.topology[0], self.d_out)
         self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
         self.map_from_changes = cfg.MODEL.MAP_FROM_CHANGES
-        self.adjacent_changes = cfg.MODEL.ADJACENT_CHANGES
 
         # positional encoding
         self.register_buffer('positional_encodings', get_positional_encodings(self.t, self.d_model),
@@ -141,11 +140,9 @@ class MultiTaskUNetOutTransformer(nn.Module):
         # urban change detection
         out_ch = []
         for t in range(T - 1):
-            if self.adjacent_changes:
-                features_ch = torch.concat((features[:, t + 1], features[:, t]), dim=1)
-            else:
-                features_ch = torch.concat((features[:, -1], features[:, t]), dim=1)
-            out_ch.append(self.outc_ch(features_ch))
+            out_ch.append(self.outc_ch(features[:, t + 1] - features[:, t]))
+        out_ch.append(self.outc_ch(features[:, -1] - features[:, 0]))
+
         out_ch = einops.rearrange(torch.stack(out_ch), 't b c h w -> b t c h w')
 
         if self.map_from_changes or self.training:
@@ -153,15 +150,15 @@ class MultiTaskUNetOutTransformer(nn.Module):
         else:
             return out_sem
 
-    def continuous_mapping_from_logits(self, logits_sem: torch.Tensor, logits_ch: torch.Tensor,
+    def continuous_mapping_from_logits(self, logits_seg: torch.Tensor, logits_ch: torch.Tensor,
                                        threshold: float = 0.5) -> torch.Tensor:
         assert self.map_from_changes
-        y_hat_sem, y_hat_ch = torch.sigmoid(logits_sem) > threshold, torch.sigmoid(logits_ch) > threshold
-        T = logits_sem.size(1)
+        y_hat_seg, y_hat_ch = torch.sigmoid(logits_seg) > threshold, torch.sigmoid(logits_ch) > threshold
+        T = logits_seg.size(1)
         for t in range(T - 2, -1, -1):
-            y_hat_sem[:, t] = y_hat_sem[:, t + 1] if self.adjacent_changes else y_hat_sem[:, -1]
-            y_hat_sem[:, t][y_hat_ch[:, t]] = False
-        return y_hat_sem.float()
+            y_hat_seg[:, t] = y_hat_seg[:, t + 1]  # use segmentation from previous timestamp
+            y_hat_seg[:, t][y_hat_ch[:, t]] = False  # set changes to non-urban
+        return y_hat_seg.float()
 
 
 class UNetOutTransformerV4(nn.Module):
@@ -208,7 +205,7 @@ class UNetOutTransformerV4(nn.Module):
         # feature extraction with unet
         x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
         out = self.decoder(self.encoder(self.inc(x)))
-        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
+        out = einops.rearrange(out, '(b t) c h w -> b t c h w', b=B)
 
         # temporal modeling with transformer
         tokens = einops.rearrange(out, 'b t f h w -> (b h w) t f')
@@ -219,19 +216,9 @@ class UNetOutTransformerV4(nn.Module):
         # transformer encoder
         features = self.transformer(tokens)
 
-        features = einops.rearrange(features, '(b1 h1 h2) t f -> b1 t f h1 h2', b1=B, h1=H)
+        features = einops.rearrange(features, '(b h w) t f -> b t f h w', b=B, h=H)
 
         return features
-
-    def continuous_mapping_from_logits(self, logits_sem: torch.Tensor, logits_ch: torch.Tensor,
-                                       threshold: float = 0.5) -> torch.Tensor:
-        assert self.map_from_changes
-        y_hat_sem, y_hat_ch = torch.sigmoid(logits_sem) > threshold, torch.sigmoid(logits_ch) > threshold
-        T = logits_sem.size(1)
-        for t in range(T - 2, -1, -1):
-            y_hat_sem[:, t] = y_hat_sem[:, t + 1] if self.adjacent_changes else y_hat_sem[:, -1]
-            y_hat_sem[:, t][y_hat_ch[:, t]] = False
-        return y_hat_sem.float()
 
 
 class UNetOutTransformerV5(nn.Module):

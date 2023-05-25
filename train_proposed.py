@@ -46,7 +46,7 @@ def run_training(cfg: experiment_manager.CfgNode):
     best_f1_val = 0
     trigger_times = 0
     stop_training = False
-
+    evaluation.model_evaluation_proposed(net, cfg, device, 'train', epoch_float, global_step)
     for epoch in range(1, epochs + 1):
         print(f'Starting epoch {epoch}/{epochs}.')
 
@@ -65,7 +65,7 @@ def run_training(cfg: experiment_manager.CfgNode):
 
             # urban mapping
             logits_seg = net.module.outc_seg(einops.rearrange(features, 'b t f h w -> (b t) f h w'))
-            logits_seg = einops.rearrange(logits_seg, '(b1 b2) c h w -> b1 b2 c h w', b1=cfg.TRAINER.BATCH_SIZE)
+            logits_seg = einops.rearrange(logits_seg, '(b t) c h w -> b t c h w', b=cfg.TRAINER.BATCH_SIZE)
             loss_seg = criterion(logits_seg, y)
 
             loss_ch = torch.tensor([0.0], dtype=torch.float32, device=device)

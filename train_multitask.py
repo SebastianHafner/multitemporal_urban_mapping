@@ -44,7 +44,7 @@ def run_training(cfg: experiment_manager.CfgNode):
     best_f1_val = 0
     trigger_times = 0
     stop_training = False
-
+    _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
     for epoch in range(1, epochs + 1):
         print(f'Starting epoch {epoch}/{epochs}.')
 
@@ -59,11 +59,11 @@ def run_training(cfg: experiment_manager.CfgNode):
             x = batch['x'].to(device)
             logits_seg, logits_ch = net(x)
 
-            y = batch['y'].to(device)
+            y_seg = batch['y'].to(device)
             if cfg.MODEL.MAP_FROM_CHANGES:
-                loss_seg = criterion(logits_seg[:, -1], y[:, -1])
+                loss_seg = criterion(logits_seg[:, -1], y_seg[:, -1])
             else:
-                loss_seg = criterion(logits_seg, y)
+                loss_seg = criterion(logits_seg, y_seg)
 
             y_ch = batch['y_ch'].to(device)
             loss_ch = criterion(logits_ch, y_ch)
