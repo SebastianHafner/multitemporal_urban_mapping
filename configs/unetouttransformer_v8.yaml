@@ -1,0 +1,11 @@
+_BASE_: "base.yaml"
+
+MODEL:
+  TYPE: 'unetouttransformerv8'
+  TRANSFORMER: True
+  TRANSFORMER_PARAMS:
+    N_HEADS: 2
+    USE_CHANGE_TOKEN: True
+
+DATALOADER:
+  INCLUDE_CHANGE_LABEL: True

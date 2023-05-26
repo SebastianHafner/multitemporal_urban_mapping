@@ -13,6 +13,7 @@ from models import unet, encodings
 from models import building_blocks as blocks
 
 
+# only performs segmentation
 class UNetOutTransformer(nn.Module):
     def __init__(self, cfg: CfgNode):
         # Super constructor
@@ -76,6 +77,7 @@ class UNetOutTransformer(nn.Module):
         return out
 
 
+# outputs segmentation and change logits
 class MultiTaskUNetOutTransformer(nn.Module):
     def __init__(self, cfg: CfgNode):
         # Super constructor
@@ -160,6 +162,7 @@ class MultiTaskUNetOutTransformer(nn.Module):
         return y_hat_seg.float()
 
 
+# only outputs the features
 class UNetOutTransformerV4(nn.Module):
     def __init__(self, cfg: CfgNode):
         # Super constructor
@@ -218,6 +221,7 @@ class UNetOutTransformerV4(nn.Module):
         return features
 
 
+# spatio-temporal transformer
 class UNetOutTransformerV5(nn.Module):
     def __init__(self, cfg: CfgNode):
         # Super constructor
@@ -293,6 +297,7 @@ class UNetOutTransformerV5(nn.Module):
         return out
 
 
+# 2-step positional-temporal tranformer
 class UNetOutTransformerV6(nn.Module):
     def __init__(self, cfg: CfgNode):
         # Super constructor
@@ -369,5 +374,153 @@ class UNetOutTransformerV6(nn.Module):
         out = einops.rearrange(out, 'b t f h w -> (b t) f h w')
         out = self.outc(out)
         out = einops.rearrange(out, '(b t) c h w -> b t c h w', b=B)
+
+        return out
+
+
+# just for first-last change detection
+class UNetOutTransformerV7(nn.Module):
+    def __init__(self, cfg: CfgNode):
+        # Super constructor
+        super(UNetOutTransformerV7, self).__init__()
+
+        # attributes
+        self.cfg = cfg
+        self.c = cfg.MODEL.IN_CHANNELS
+        self.d_out = cfg.MODEL.OUT_CHANNELS
+        self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
+        self.t = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.topology = cfg.MODEL.TOPOLOGY
+        self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
+        self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
+        self.d_model = self.topology[0]
+        self.d_hid = self.d_model * 4
+        self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
+        self.change_method = 'timeseries'
+
+        # unet blocks
+        self.inc = blocks.InConv(self.c, self.topology[0], blocks.DoubleConv)
+        self.encoder = unet.Encoder(cfg)
+        self.decoder = unet.Decoder(cfg)
+        self.outc = blocks.OutConv(self.topology[0], self.d_out)
+        self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
+
+        # temporal encoding
+        self.use_change_token = cfg.MODEL.TRANSFORMER_PARAMS.USE_CHANGE_TOKEN
+        n_encodings = self.t + 1 if self.use_change_token else self.t
+        self.register_buffer('temporal_encodings', encodings.get_relative_encodings(n_encodings, self.d_model),
+                             persistent=False)
+
+        self.change_token = nn.Parameter(torch.rand(1, 1, self.d_model))
+
+        # transformer encoder
+        encoder_layer = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=self.n_heads,
+                                                   dim_feedforward=self.d_hid, batch_first=True,
+                                                   activation=self.activation)
+        self.transformer = nn.TransformerEncoder(encoder_layer, self.n_layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, _, H, W = x.size()
+
+        # feature extraction with unet
+        x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
+        out = self.decoder(self.encoder(self.inc(x)))
+        out = einops.rearrange(out, '(b t) c h w -> b t c h w', b=B)
+
+        # temporal modeling with transformer
+        tokens = einops.rearrange(out, 'b t f h w -> (b h w) t f')
+        if self.use_change_token:
+            change_token = self.change_token.repeat(tokens.size(0), 1, 1)
+            tokens = torch.concat((tokens, change_token), dim=1)
+
+        # adding temporal encoding
+        out = tokens + self.temporal_encodings.repeat(B * H * W, 1, 1)
+
+        # transformer encoder
+        out = self.transformer(out)
+
+        out = einops.rearrange(out, '(b h w) t f -> b t f h w', b=B, h=H)
+        out = out[:, -1]  # change token if use change token, or last token in timeseries
+        if self.training and self.disable_outc:
+            return out
+
+        out = self.outc(out)
+
+        return out
+
+
+# just for first-last change detection
+class UNetOutTransformerV8(nn.Module):
+    def __init__(self, cfg: CfgNode):
+        # Super constructor
+        super(UNetOutTransformerV8, self).__init__()
+
+        # attributes
+        self.cfg = cfg
+        self.c = cfg.MODEL.IN_CHANNELS
+        self.d_out = cfg.MODEL.OUT_CHANNELS
+        self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
+        self.t = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.topology = cfg.MODEL.TOPOLOGY
+        self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
+        self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
+        self.d_model = self.topology[0]
+        self.d_hid = self.d_model * 4
+        self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
+        self.change_method = 'timeseries'
+
+        # unet blocks
+        self.inc = blocks.InConv(self.c, self.topology[0], blocks.DoubleConv)
+        self.encoder = unet.Encoder(cfg)
+        self.decoder = unet.Decoder(cfg)
+        self.outc = blocks.OutConv(self.topology[0], self.d_out)
+        self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
+
+        # temporal encoding
+        self.register_buffer('temporal_encodings', encodings.get_relative_encodings(self.t, self.d_model),
+                             persistent=False)
+
+        # transformer encoder
+        encoder_layer = nn.TransformerEncoderLayer(d_model=self.d_model, nhead=self.n_heads,
+                                                   dim_feedforward=self.d_hid, batch_first=True,
+                                                   activation=self.activation)
+        self.transformer = nn.TransformerEncoder(encoder_layer, self.n_layers)
+
+        # transformer decoder
+        self.use_change_token = cfg.MODEL.TRANSFORMER_PARAMS.USE_CHANGE_TOKEN
+        n_encodings = self.t + 1 if self.use_change_token else self.t
+        self.register_buffer('temporal_encodings_decoder', encodings.get_relative_encodings(n_encodings, self.d_model),
+                             persistent=False)
+        self.change_token = nn.Parameter(torch.rand(1, 1, self.d_model))
+        self.transformer_decoder = nn.TransformerEncoder(encoder_layer, self.n_layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, _, H, W = x.size()
+
+        # feature extraction with unet
+        x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
+        out = self.decoder(self.encoder(self.inc(x)))
+        out = einops.rearrange(out, '(b t) c h w -> b t c h w', b=B)
+
+        # temporal modeling with transformer
+        tokens = einops.rearrange(out, 'b t f h w -> (b h w) t f')
+        out = tokens + self.temporal_encodings.repeat(B * H * W, 1, 1)
+        out = self.transformer(out)
+        out = einops.rearrange(out, '(b h w) t f -> b t f h w', b=B, h=H)
+
+        # transformer decoding
+        tokens = einops.rearrange(out, 'b t f h w -> (b h w) t f')
+        if self.use_change_token:
+            change_token = self.change_token.repeat(tokens.size(0), 1, 1)
+            tokens = torch.concat((tokens, change_token), dim=1)
+        out = tokens + self.temporal_encodings_decoder.repeat(B * H * W, 1, 1)
+        out = self.transformer_decoder(out)
+        out = einops.rearrange(out, '(b h w) t f -> b t f h w', b=B, h=H)
+
+        out = out[:, -1]  # change token if use change token, or last token in timeseries
+        if self.training and self.disable_outc:
+            return out
+
+        out = self.outc(out)
 
         return out
