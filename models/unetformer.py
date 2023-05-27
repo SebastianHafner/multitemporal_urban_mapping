@@ -182,3 +182,153 @@ class MultiTaskUNetFormer(nn.Module):
             y_hat_seg[:, t] = y_hat_seg[:, t + 1]
             y_hat_seg[:, t][y_hat_ch[:, t]] = False
         return y_hat_seg.float()
+
+
+class UNetFormerV7(nn.Module):
+    def __init__(self, cfg: CfgNode):
+        # Super constructor
+        super(UNetFormerV7, self).__init__()
+
+        # attributes
+        self.cfg = cfg
+        self.c = cfg.MODEL.IN_CHANNELS
+        self.d_out = cfg.MODEL.OUT_CHANNELS
+        self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
+        self.t = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.topology = cfg.MODEL.TOPOLOGY
+        self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
+        self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
+        self.d_model = self.topology[0]
+        self.d_hid = self.d_model * 4
+        self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
+        self.change_method = 'timeseries'
+
+        # unet blocks
+        self.inc = blocks.InConv(self.c, self.topology[0], blocks.DoubleConv)
+        self.encoder = unet.Encoder(cfg)
+        self.decoder = unet.Decoder(cfg)
+        self.outc = blocks.OutConv(self.topology[0], self.d_out)
+        self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
+
+        # transformers
+        self.use_change_token = cfg.MODEL.TRANSFORMER_PARAMS.USE_CHANGE_TOKEN
+        n_encodings = self.t + 1 if self.use_change_token else self.t
+        transformers, change_tokens = [], []
+        transformer_dims = [self.topology[-1]] + list(self.topology[::-1])
+        for i, d_model in enumerate(transformer_dims):
+            # temporal encoding
+            self.register_buffer(f'temporal_encodings_{i}', encodings.get_relative_encodings(n_encodings, d_model),
+                                 persistent=False)
+
+            encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=self.n_heads,
+                                                       dim_feedforward=self.d_hid, batch_first=True,
+                                                       activation=self.activation)
+            transformers.append(nn.TransformerEncoder(encoder_layer, self.n_layers))
+            change_tokens.append(nn.Parameter(torch.rand(1, 1, d_model)))
+        self.transformers = nn.ModuleList(transformers)
+        self.change_tokens = nn.ParameterList(change_tokens)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, _, H, W = x.size()
+
+        # feature extraction with unet
+        x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
+        features = self.encoder(self.inc(x))
+
+        # temporal modeling of features with transformer
+        for i, transformer in enumerate(self.transformers):
+            f = features[i]
+            tokens = einops.rearrange(f, '(b t) f h w -> (b h w) t f', b=B)
+            if self.use_change_token:
+                change_token = self.change_tokens[i].repeat(tokens.size(0), 1, 1)
+                tokens = torch.concat((tokens, change_token), dim=1)
+            # adding temporal encoding
+            scale_factor = 2 ** (len(self.topology) - i)
+            h, w = H // scale_factor, W // scale_factor
+            tokens = tokens + getattr(self, f'temporal_encodings_{i}').repeat(B * h * w, 1, 1)
+
+            f = transformer(tokens)
+
+            f = einops.rearrange(f, '(b h w) t f -> (b t) f h w', b=B, h=h)
+            features[i] = f
+
+        features = self.decoder(features)
+        out = self.outc(features)
+        out = einops.rearrange(out, '(b t) c h w -> b t c h w', b=B)
+        out = out[:, -1]
+        return out
+
+
+class UNetFormerV8(nn.Module):
+    def __init__(self, cfg: CfgNode):
+        # Super constructor
+        super(UNetFormerV8, self).__init__()
+
+        # attributes
+        self.cfg = cfg
+        self.c = cfg.MODEL.IN_CHANNELS
+        self.d_out = cfg.MODEL.OUT_CHANNELS
+        self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
+        self.t = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.topology = cfg.MODEL.TOPOLOGY
+        self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
+        self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
+        self.d_model = self.topology[0]
+        self.d_hid = self.d_model * 4
+        self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
+        self.change_method = 'timeseries'
+
+        # unet blocks
+        self.inc = blocks.InConv(self.c, self.topology[0], blocks.DoubleConv)
+        self.encoder = unet.Encoder(cfg)
+        self.decoder = unet.Decoder(cfg)
+        self.outc = blocks.OutConv(self.topology[0], self.d_out)
+        self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
+
+        # transformers
+        self.use_change_token = cfg.MODEL.TRANSFORMER_PARAMS.USE_CHANGE_TOKEN
+        n_encodings = self.t + 1 if self.use_change_token else self.t
+        transformers, change_tokens = [], []
+        transformer_dims = [self.topology[-1]] + list(self.topology[::-1])
+        for i, d_model in enumerate(transformer_dims):
+            # temporal encoding
+            self.register_buffer(f'temporal_encodings_{i}', encodings.get_relative_encodings(n_encodings, d_model),
+                                 persistent=False)
+
+            encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=self.n_heads,
+                                                       dim_feedforward=self.d_hid, batch_first=True,
+                                                       activation=self.activation)
+            transformers.append(nn.TransformerEncoder(encoder_layer, self.n_layers))
+            change_tokens.append(nn.Parameter(torch.rand(1, 1, d_model)))
+        self.transformers = nn.ModuleList(transformers)
+        self.change_tokens = nn.ParameterList(change_tokens)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, T, _, H, W = x.size()
+
+        # feature extraction with unet
+        x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
+        features = self.encoder(self.inc(x))
+
+        # temporal modeling of features with transformer
+        for i, transformer in enumerate(self.transformers):
+            f = features[i]
+            tokens = einops.rearrange(f, '(b t) f h w -> (b h w) t f', b=B)
+            if self.use_change_token:
+                change_token = self.change_tokens[i].repeat(tokens.size(0), 1, 1)
+                tokens = torch.concat((tokens, change_token), dim=1)
+            # adding temporal encoding
+            scale_factor = 2 ** (len(self.topology) - i)
+            h, w = H // scale_factor, W // scale_factor
+            tokens = tokens + getattr(self, f'temporal_encodings_{i}').repeat(B * h * w, 1, 1)
+
+            f = transformer(tokens)
+
+            f = einops.rearrange(f, '(b h w) t f -> (b t) f h w', b=B, h=h)
+            features[i] = f
+
+        features = self.decoder(features)
+        out = self.outc(features)
+        out = einops.rearrange(out, '(b t) c h w -> b t c h w', b=B)
+        out = out[:, -1]
+        return out

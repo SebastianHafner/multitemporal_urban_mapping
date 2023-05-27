@@ -85,6 +85,7 @@ def model_evaluation_ch(net, cfg, device, run_type: str, epoch: float, step: int
     elif net.module.change_method == 'timeseries':
         f1_ch_fl = metrics.f1_score(m.TP_ch_fl, m.FP_ch_fl, m.FN_ch_fl)
         wandb.log({
+            f'{run_type} f1': f1_ch_fl,
             f'{run_type} f1 ch fl': f1_ch_fl,
             'step': step, 'epoch': epoch,
         })
