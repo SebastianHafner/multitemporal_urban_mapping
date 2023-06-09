@@ -237,3 +237,73 @@ class MeasurerProposed(object):
         self.unsup_tc_values = []
         self.sup_tc_values = []
         self.sup_tc_urban_values = []
+
+
+class MeasurerMRF(object):
+    def __init__(self):
+
+        # urban mapping
+        self.TP_seg_cont = self.TN_seg_cont = self.FP_seg_cont = self.FN_seg_cont = 0
+        self.TP_seg_fl = self.TN_seg_fl = self.FP_seg_fl = self.FN_seg_fl = 0
+
+        # urban change | cch -> continuous change | flch -> first to last change
+        self.TP_ch_cont = self.TN_ch_cont = self.FP_ch_cont = self.FN_ch_cont = 0
+        self.TP_ch_fl = self.TN_ch_fl = self.FP_ch_fl = self.FN_ch_fl = 0
+
+        # temporal consistency
+        self.unsup_tc_values = []
+        self.sup_tc_values = []
+        self.sup_tc_urban_values = []
+
+    def add_sample(self, y_seg: torch.Tensor, y_hat_seg: torch.Tensor):
+        B, T, _, H, W = y_seg.size()
+
+        y_seg, y_hat_seg = y_seg.bool(), y_hat_seg.bool()
+
+        # urban mapping
+        # continuous
+        self.TP_seg_cont += torch.sum(y_seg & y_hat_seg).float()
+        self.TN_seg_cont += torch.sum(~y_seg & ~y_hat_seg).float()
+        self.FP_seg_cont += torch.sum(y_hat_seg & ~y_seg).float()
+        self.FN_seg_cont += torch.sum(~y_hat_seg & y_seg).float()
+        # first last
+        self.TP_seg_cont += torch.sum(y_seg[:, [0, -1]] & y_hat_seg[:, [0, -1]]).float()
+        self.TN_seg_cont += torch.sum(~y_seg[:, [0, -1]] & ~y_hat_seg[:, [0, -1]]).float()
+        self.FP_seg_cont += torch.sum(y_hat_seg[:, [0, -1]] & ~y_seg[:, [0, -1]]).float()
+        self.FN_seg_cont += torch.sum(~y_hat_seg[:, [0, -1]] & y_seg[:, [0, -1]]).float()
+
+        # urban change
+        # continuous change
+        self.TP_ch_cont += torch.sum(y_ch[:, :-1] & y_hat_ch[:, :-1]).float()
+        self.TN_ch_cont += torch.sum(~y_ch[:, :-1] & ~y_hat_ch[:, :-1]).float()
+        self.FP_ch_cont += torch.sum(y_hat_ch[:, :-1] & ~y_ch[:, :-1]).float()
+        self.FN_ch_cont += torch.sum(~y_hat_ch[:, :-1] & y_ch[:, :-1]).float()
+        # first last change
+        self.TP_ch_fl += torch.sum(y_ch[:, -1] & y_hat_ch[:, -1]).float()
+        self.TN_ch_fl += torch.sum(~y_ch[:, -1] & ~y_hat_ch[:, -1]).float()
+        self.FP_ch_fl += torch.sum(y_hat_ch[:, -1] & ~y_ch[:, -1]).float()
+        self.FN_ch_fl += torch.sum(~y_hat_ch[:, -1] & y_ch[:, -1]).float()
+
+        # temporal consistency
+        for b in range(B):
+            self.unsup_tc_values.append(metrics.unsupervised_tc(y_hat_seg[b]))
+            self.sup_tc_values.append(metrics.supervised_tc(y_seg[b], y_hat_seg[b]))
+            self.sup_tc_urban_values.append(metrics.supervised_tc_urban(y_seg[b], y_hat_seg[b]))
+
+    def is_empty(self):
+        assert (len(self.unsup_tc_values) == len(self.sup_tc_values))
+        return True if len(self.sup_tc_values) == 0 else False
+
+    def reset(self):
+        # urban mapping
+        self.TP_seg_cont = self.TN_seg_cont = self.FP_seg_cont = self.FN_seg_cont = 0
+        self.TP_seg_fl = self.TN_seg_fl = self.FP_seg_fl = self.FN_seg_fl = 0
+
+        # urban change | cch -> continuous change | flch -> first to last change
+        self.TP_ch_cont = self.TN_ch_cont = self.FP_ch_cont = self.FN_ch_cont = 0
+        self.TP_ch_fl = self.TN_ch_fl = self.FP_ch_fl = self.FN_ch_fl = 0
+
+        # temporal consistency
+        self.unsup_tc_values = []
+        self.sup_tc_values = []
+        self.sup_tc_urban_values = []

@@ -4,6 +4,7 @@ import wandb
 from utils import datasets, measurers, metrics
 import numpy as np
 import einops
+from itertools import combinations
 
 EPS = 10e-05
 
@@ -161,6 +162,62 @@ def model_evaluation_proposed(net, cfg, device, run_type: str, epoch: float, ste
         logits_ch = net.module.outc_ch(features[:, -1] - features[:, 0])
         y_hat_ch.append(torch.sigmoid(logits_ch).detach())
         y_hat_ch = einops.rearrange(torch.stack(y_hat_ch), 't b c h w -> b t c h w')
+
+        y_seg, y_ch = item['y'].to(device), item['y_ch'].to(device)
+        m.add_sample(y_seg, y_hat_seg, y_ch, y_hat_ch)
+
+    f1_seg_cont = metrics.f1_score(m.TP_seg_cont, m.FP_seg_cont, m.FN_seg_cont)
+    f1_seg_fl = metrics.f1_score(m.TP_seg_fl, m.FP_seg_fl, m.FN_seg_fl)
+    f1_ch_cont = metrics.f1_score(m.TP_ch_cont, m.FP_ch_cont, m.FN_ch_cont)
+    f1_ch_fl = metrics.f1_score(m.TP_ch_fl, m.FP_ch_fl, m.FN_ch_fl)
+    f1 = (f1_seg_cont + f1_seg_fl + f1_ch_cont + f1_ch_fl) / 4
+
+    wandb.log({
+        f'{run_type} f1': f1,
+        f'{run_type} f1 seg cont': f1_seg_cont,
+        f'{run_type} f1 seg fl': f1_seg_fl,
+        f'{run_type} f1 ch cont': f1_ch_cont,
+        f'{run_type} f1 ch fl': f1_ch_fl,
+        f'{run_type} unsup_tc': np.mean(m.unsup_tc_values),
+        f'{run_type} sup_tc': np.mean(m.sup_tc_values),
+        f'{run_type} sup_tc_urban': np.mean(m.sup_tc_urban_values),
+        'step': step, 'epoch': epoch,
+    })
+
+    return f1
+
+
+def model_evaluation_proposed2(net, cfg, device, run_type: str, epoch: float, step: int) -> float:
+    ds = datasets.EvalDataset(cfg, run_type, tiling=cfg.AUGMENTATION.CROP_SIZE)
+
+    net.to(device)
+    net.eval()
+
+    m = measurers.MeasurerProposed()
+
+    dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE * 2, num_workers=0, shuffle=False,
+                                       drop_last=False)
+
+    for step, item in enumerate(dataloader):
+        x = item['x'].to(device)
+        B, T, *_ = x.size()
+
+        with torch.no_grad():
+            features = net(x)
+
+        timestamp_combinations = [(t, t + 1) for t in range(T - 1)] + [(0, T - 1)]
+        features_ch = net.module.change_features(features, timestamp_combinations)
+        features_ch = [einops.rearrange(f, 'n b c h w -> (b n) c h w') for f in features_ch]
+
+        # urban mapping
+        features_seg = [einops.rearrange(f, 'b t c h w -> (b t) c h w') for f in features]
+        logits_seg = net.module.outc_seg(net.module.decoder_seg(features_seg))
+        logits_seg = einops.rearrange(logits_seg, '(b t) c h w -> b t c h w', b=B)
+        y_hat_seg = torch.sigmoid(logits_seg).detach()
+
+        logits_ch = net.module.outc_ch(net.module.decoder_ch(features_ch))
+        logits_ch = einops.rearrange(logits_ch, '(b n) c h w -> b n c h w', n=len(timestamp_combinations))
+        y_hat_ch = torch.sigmoid(logits_ch).detach()
 
         y_seg, y_ch = item['y'].to(device), item['y_ch'].to(device)
         m.add_sample(y_seg, y_hat_seg, y_ch, y_hat_ch)

@@ -34,6 +34,8 @@ def create_network(cfg):
         net = unetformer.UNetFormer(cfg)
     elif cfg.MODEL.TYPE == 'unetformermultitask':
         net = unetformer.MultiTaskUNetFormer(cfg)
+    elif cfg.MODEL.TYPE == 'unetformerv4':
+        net = unetformer.UNetFormerV4(cfg)
     elif cfg.MODEL.TYPE == 'unetformerv7':
         net = unetformer.UNetFormerV7(cfg)
     elif cfg.MODEL.TYPE == 'siamdiffunet':

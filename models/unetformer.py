@@ -184,6 +184,100 @@ class MultiTaskUNetFormer(nn.Module):
         return y_hat_seg.float()
 
 
+class UNetFormerV4(nn.Module):
+    def __init__(self, cfg: CfgNode):
+        # Super constructor
+        super(UNetFormerV4, self).__init__()
+
+        # attributes
+        self.cfg = cfg
+        self.c = cfg.MODEL.IN_CHANNELS
+        self.d_out = cfg.MODEL.OUT_CHANNELS
+        self.h = self.w = cfg.AUGMENTATION.CROP_SIZE
+        self.t = cfg.DATALOADER.TIMESERIES_LENGTH
+        self.topology = cfg.MODEL.TOPOLOGY
+        self.n_layers = cfg.MODEL.TRANSFORMER_PARAMS.N_LAYERS
+        self.n_heads = cfg.MODEL.TRANSFORMER_PARAMS.N_HEADS
+        self.d_model = self.topology[0]
+        self.d_hid = self.d_model * 4
+        self.activation = cfg.MODEL.TRANSFORMER_PARAMS.ACTIVATION
+
+        # unet blocks
+        self.inc = blocks.InConv(self.c, self.topology[0], blocks.DoubleConv)
+        self.encoder = unet.Encoder(cfg)
+
+        self.decoder_seg = unet.Decoder(cfg)
+        self.outc_seg = blocks.OutConv(self.topology[0], self.d_out)
+        self.disable_outc = cfg.MODEL.DISABLE_OUTCONV
+
+        self.decoder_ch = unet.Decoder(cfg)
+        self.outc_ch = blocks.OutConv(self.topology[0], self.d_out)
+        self.map_from_changes = cfg.MODEL.MAP_FROM_CHANGES
+
+        # transformers
+        transformers = []
+        transformer_dims = [self.topology[-1]] + list(self.topology[::-1])
+        for i, d_model in enumerate(transformer_dims):
+            # temporal encoding
+            self.register_buffer(f'temporal_encodings_{i}', encodings.get_relative_encodings(self.t, d_model),
+                                 persistent=False)
+
+            encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=self.n_heads,
+                                                       dim_feedforward=self.d_hid, batch_first=True,
+                                                       activation=self.activation)
+            transformers.append(nn.TransformerEncoder(encoder_layer, self.n_layers))
+        self.transformers = nn.ModuleList(transformers)
+
+    def forward(self, x: torch.Tensor) -> tuple:
+        B, T, _, H, W = x.size()
+
+        # feature extraction with unet
+        x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
+        features = self.encoder(self.inc(x))
+
+        # temporal modeling of features with transformer
+        for i, transformer in enumerate(self.transformers):
+            f = features[i]
+            tokens = einops.rearrange(f, '(b t) f h w -> (b h w) t f', b=B)
+
+            # adding temporal encoding
+            scale_factor = 2 ** (len(self.topology) - i)
+            h, w = H // scale_factor, W // scale_factor
+            tokens = tokens + getattr(self, f'temporal_encodings_{i}').repeat(B * h * w, 1, 1)
+
+            f = transformer(tokens)
+
+            f = einops.rearrange(f, '(b h w) t f -> b t f h w', b=B, h=h)
+            features[i] = f
+
+        return features
+
+    @staticmethod
+    def change_features(features: list, combinations: list) -> list:
+        # compute urban change detection features
+        features_ch = []
+        for feature in features:
+            B, T, _, H, W = feature.size()
+            feature_ch = []
+            for t1, t2 in combinations:
+                feature_ch.append(feature[:, t2] - feature[:, t1])
+            # n: number of combinations
+            feature_ch = torch.stack(feature_ch)
+            features_ch.append(feature_ch)
+        return features_ch
+
+
+def continuous_mapping_from_logits(self, logits_seg: torch.Tensor, logits_ch: torch.Tensor,
+                                   threshold: float = 0.5) -> torch.Tensor:
+    assert self.map_from_changes
+    y_hat_seg, y_hat_ch = torch.sigmoid(logits_seg) > threshold, torch.sigmoid(logits_ch) > threshold
+    T = logits_seg.size(1)
+    for t in range(T - 2, -1, -1):
+        y_hat_seg[:, t] = y_hat_seg[:, t + 1]
+        y_hat_seg[:, t][y_hat_ch[:, t]] = False
+    return y_hat_seg.float()
+
+
 class UNetFormerV7(nn.Module):
     def __init__(self, cfg: CfgNode):
         # Super constructor
