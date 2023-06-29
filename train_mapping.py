@@ -105,7 +105,7 @@ def run_training(cfg: experiment_manager.CfgNode):
         assert (epoch == epoch_float)
         print(f'epoch float {epoch_float} (step {global_step}) - epoch {epoch}')
         # evaluation at the end of an epoch
-        _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
+        # _ = evaluation.model_evaluation(net, cfg, device, 'train', epoch_float, global_step)
         f1_val = evaluation.model_evaluation(net, cfg, device, 'val', epoch_float, global_step)
 
         if f1_val <= best_f1_val:

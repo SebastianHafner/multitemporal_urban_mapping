@@ -4,7 +4,6 @@ import wandb
 from utils import datasets, measurers, metrics
 import numpy as np
 import einops
-from itertools import combinations
 
 EPS = 10e-05
 
@@ -15,7 +14,7 @@ def model_evaluation(net, cfg, device, run_type: str, epoch: float, step: int) -
     net.to(device)
     net.eval()
 
-    m = measurers.Measurer()
+    m = measurers.MappingMeasurer()
 
     dataloader = torch_data.DataLoader(ds, batch_size=cfg.TRAINER.BATCH_SIZE * 2, num_workers=0, shuffle=False,
                                        drop_last=False)

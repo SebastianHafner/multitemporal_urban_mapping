@@ -32,10 +32,10 @@ class AbstractMeasurer(abc.ABC):
         fp_attr = f'FP_{attr_name}'
         fn_attr = f'FN_{attr_name}'
 
-        setattr(self, tp_attr, getattr(self, tp_attr) + torch.sum(y & y_hat).float())
-        setattr(self, tn_attr, getattr(self, tn_attr) + torch.sum(~y & ~y_hat).float())
-        setattr(self, fp_attr, getattr(self, fp_attr) + torch.sum(y_hat & ~y).float())
-        setattr(self, fn_attr, getattr(self, fn_attr) + torch.sum(~y_hat & y).float())
+        setattr(self, tp_attr, getattr(self, tp_attr) + torch.sum(y & y_hat).float().item())
+        setattr(self, tn_attr, getattr(self, tn_attr) + torch.sum(~y & ~y_hat).float().item())
+        setattr(self, fp_attr, getattr(self, fp_attr) + torch.sum(y_hat & ~y).float().item())
+        setattr(self, fn_attr, getattr(self, fn_attr) + torch.sum(~y_hat & y).float().item())
 
     def _update_temporal_consistency(self, y_seg: torch.Tensor, y_hat_seg: torch.Tensor):
         y_seg = y_seg.bool()

@@ -1,16 +1,15 @@
 import torch
 import torch.nn as nn
-from torch.autograd import Variable
 import einops
 from collections import OrderedDict
 from models import building_blocks as blocks
-from utils import experiment_manager
+from utils.experiment_manager import CfgNode
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class UNet(nn.Module):
-    def __init__(self, cfg: experiment_manager.CfgNode):
+    def __init__(self, cfg: CfgNode):
         super(UNet, self).__init__()
         self.cfg = cfg
 
@@ -28,12 +27,12 @@ class UNet(nn.Module):
         B, T, _, H, W = x.size()
         x = einops.rearrange(x, 'b t c h w -> (b t) c h w')
         out = self.outc(self.decoder(self.encoder(self.inc(x))))
-        out = einops.rearrange(out, '(b1 b2) c h w -> b1 b2 c h w', b1=B)
+        out = einops.rearrange(out, '(b t) c h w -> b t c h w', b=B)
         return out
 
 
 class Encoder(nn.Module):
-    def __init__(self, cfg: experiment_manager.CfgNode):
+    def __init__(self, cfg: CfgNode):
         super(Encoder, self).__init__()
 
         self.cfg = cfg
@@ -66,7 +65,7 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, cfg: experiment_manager.CfgNode):
+    def __init__(self, cfg: CfgNode):
         super(Decoder, self).__init__()
         self.cfg = cfg
 
