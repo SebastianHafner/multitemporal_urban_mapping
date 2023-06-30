@@ -45,15 +45,24 @@ class AbstractMeasurer(abc.ABC):
             self.sup_tc_values.append(metrics.supervised_tc(y_seg[b], y_hat_seg[b]))
             self.sup_tc_urban_values.append(metrics.supervised_tc_urban(y_seg[b], y_hat_seg[b]))
 
-    @staticmethod
-    def _cont_ch_from_seg(y_seg: torch.Tensor, y_hat_seg: torch.Tensor) -> tuple:
+    def _cont_ch_from_seg(self, y_seg: torch.Tensor, y_hat_seg: torch.Tensor) -> tuple:
         B, T, C, H, W = y_seg.size()
+        y_seg = y_seg.bool()
+        y_hat_seg = y_hat_seg > self.threshold
+
         y_ch = torch.empty((B, T - 1, C, H, W), dtype=torch.bool)
         y_hat_ch = torch.empty((B, T - 1, C, H, W), dtype=torch.bool)
         for t in range(T - 1):
             y_ch[:, t] = torch.ne(y_seg[:, t + 1], y_seg[:, t])
             y_hat_ch[:, t] = torch.ne(y_hat_seg[:, t + 1], y_hat_seg[:, t])
         return y_ch, y_hat_ch
+
+    def _fl_ch_from_seg(self, y_seg: torch.Tensor, y_hat_seg: torch.Tensor) -> tuple:
+        y_seg = y_seg.bool()
+        y_hat_seg = y_hat_seg > self.threshold
+        y_ch_fl = torch.ne(y_seg[:, -1], y_seg[:, 0])
+        y_hat_ch_fl = torch.ne(y_hat_seg[:, -1], y_hat_seg[:, 0])
+        return y_ch_fl, y_hat_ch_fl
 
     def reset(self):
         # urban mapping
@@ -81,14 +90,13 @@ class MappingMeasurer(AbstractMeasurer):
 
         # urban mapping
         self._update_metrics(y_seg, y_hat_seg, 'seg_cont')
-        self._update_metrics(y_seg[:, [0, -1]], y_hat_seg[:, 0, -1], 'seg_fl')
+        self._update_metrics(y_seg[:, [0, -1]], y_hat_seg[:, [0, -1]], 'seg_fl')
 
         # urban change
         y_ch_cont, y_hat_ch_cont = self._cont_ch_from_seg(y_seg, y_hat_seg)
         self._update_metrics(y_ch_cont, y_hat_ch_cont, 'ch_cont')
 
-        y_ch_fl = torch.ne(y_seg[:, -1], y_seg[:, 0])
-        y_hat_ch_fl = torch.ne(y_hat_seg[:, -1], y_hat_seg[:, 0])
+        y_ch_fl, y_hat_ch_fl = self._fl_ch_from_seg(y_seg, y_hat_seg)
         self._update_metrics(y_ch_fl, y_hat_ch_fl, 'ch_fl')
 
         self._update_temporal_consistency(y_seg, y_hat_seg)
@@ -124,7 +132,7 @@ class MultiTaskMeasurerLimited(AbstractMeasurer):
     def add_sample(self, y_seg: torch.Tensor, y_hat_seg: torch.Tensor, y_hat_ch_fl: torch.Tensor):
 
         # urban mapping first last
-        self._update_metrics(y_seg[:, [0, -1]], y_hat_seg[:, 0, -1], 'seg_fl')
+        self._update_metrics(y_seg[:, [0, -1]], y_hat_seg[:, [0, -1]], 'seg_fl')
 
         # urban change first last change
         y_ch_fl = torch.ne(y_seg[:, -1], y_seg[:, 0])
@@ -139,7 +147,7 @@ class MultiTaskMeasurer(AbstractMeasurer):
 
         # urban mapping
         self._update_metrics(y_seg, y_hat_seg, 'seg_cont')
-        self._update_metrics(y_seg[:, [0, -1]], y_hat_seg[:, 0, -1], 'seg_fl')
+        self._update_metrics(y_seg[:, [0, -1]], y_hat_seg[:, [0, -1]], 'seg_fl')
 
         # urban change
         self._update_metrics(y_ch[:, :-1], y_hat_ch[:, :-1], 'ch_cont')

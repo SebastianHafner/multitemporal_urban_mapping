@@ -156,7 +156,7 @@ def mrf_unetouttransformer_v2(cfg: CfgNode, run_type: str = 'test'):
         data[m.name] = {}
         for attr in ['seg_cont', 'seg_fl', 'ch_cont', 'ch_fl']:
             f1 = metrics.f1_score(getattr(m, f'TP_{attr}'), getattr(m, f'TP_{attr}'), getattr(m, f'TN_{attr}'))
-            data[m.name][attr] = f1.item()
+            data[m.name][attr] = f1
 
     out_file = Path(cfg.PATHS.OUTPUT) / 'assessment' / f'{cfg.NAME}.json'
     geofiles.write_json(out_file, data)
@@ -200,7 +200,7 @@ def mrf_unetouttransformer_v2_parallel(cfg: CfgNode, run_type: str = 'test'):
         data[m.name] = {}
         for attr in ['seg_cont', 'seg_fl', 'ch_cont', 'ch_fl']:
             f1 = metrics.f1_score(getattr(m, f'TP_{attr}'), getattr(m, f'TP_{attr}'), getattr(m, f'TN_{attr}'))
-            data[m.name][attr] = f1.item()
+            data[m.name][attr] = f1
 
     out_file = Path(cfg.PATHS.OUTPUT) / 'assessment' / f'{cfg.NAME}.json'
     geofiles.write_json(out_file, data)
@@ -244,7 +244,8 @@ def unet_test(cfg: CfgNode, run_type: str = 'test'):
 
     m = measurers.MappingMeasurer(name='vanilla')
 
-    ds = datasets.EvalDataset(cfg, run_type, tiling=cfg.AUGMENTATION.CROP_SIZE, aoi_id='L15-0566E-1185N_2265_3451_13')
+    # ds = datasets.EvalDataset(cfg, run_type, tiling=cfg.AUGMENTATION.CROP_SIZE, aoi_id='L15-0566E-1185N_2265_3451_13')
+    ds = datasets.EvalDataset(cfg, run_type, tiling=cfg.AUGMENTATION.CROP_SIZE)
     dataloader = torch_data.DataLoader(ds, batch_size=1, num_workers=0, shuffle=False, drop_last=False)
 
     for step, item in enumerate(tqdm(dataloader)):
