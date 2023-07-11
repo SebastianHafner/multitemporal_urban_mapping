@@ -10,11 +10,12 @@ import wandb
 import numpy as np
 
 from utils import datasets, loss_factory, evaluation, experiment_manager, parsers
+from utils.experiment_manager import CfgNode
 from models import model_factory
 import einops
 
 
-def run_training(cfg: experiment_manager.CfgNode):
+def run_training(cfg: CfgNode):
     net = model_factory.create_network(cfg)
     net.to(device)
     optimizer = optim.AdamW(net.parameters(), lr=cfg.TRAINER.LR, weight_decay=0.01)
