@@ -1,4 +1,4 @@
-_BASE_: "unet.yaml"
+_BASE_: "siamdiff.yaml"
 DEBUG: True
 
 TRAINER:
